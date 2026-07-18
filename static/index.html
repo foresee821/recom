@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f6f6f6" />
+    <title>你说了算 · 淘宝即时意图 Demo</title>
+    <link rel="stylesheet" href="/styles.css?v=20260718-preset-cases-v1" />
+  </head>
+  <body>
+    <main class="stage">
+      <section class="pitch" aria-label="产品介绍">
+        <div class="pitch-mark">YOU<br />DECIDE</div>
+        <p class="pitch-kicker">语音调控 · 推荐由你决定</p>
+        <h1>你说了算</h1>
+        <p class="pitch-lead">别让推荐猜。<br />把你此刻想看的，直接说出来。</p>
+        <div class="pitch-flow" aria-label="产品步骤">
+          <span><b>01</b> 按住说话</span>
+          <i></i>
+          <span><b>02</b> 理解意图</span>
+          <i></i>
+          <span><b>03</b> 即刻重排</span>
+        </div>
+        <p class="pitch-note">Demo 本地运行 · 语音不保存 · 无外部服务</p>
+      </section>
+
+      <section class="device-wrap">
+        <div class="device" id="device">
+          <div class="dynamic-island" aria-hidden="true"></div>
+          <div class="mobile-screen" id="mobile-screen">
+            <header class="app-header">
+              <div class="status-row"><span>11:02 <i>◒</i></span><span>▮▮▮ ⌁ <b>99</b></span></div>
+              <nav class="top-channels" aria-label="首页频道">
+                <button>关注</button>
+                <button class="active">推荐</button>
+                <button>闪购 <em>外卖</em></button>
+                <button>国补</button>
+                <button>超级立减</button>
+                <button>飞猪</button>
+                <button>穿搭</button>
+                <button>居家</button>
+              </nav>
+              <div class="search-row">
+                <button class="brand-dot" id="home-logo" aria-label="回到推荐页"><span></span></button>
+                <button class="search-box" id="search-entry" type="button" disabled aria-disabled="true">
+                  <span id="search-label">绝美白色短袖 t 恤</span>
+                  <i class="camera-icon" aria-hidden="true"></i>
+                  <em>搜索</em>
+                </button>
+              </div>
+            </header>
+
+            <section id="intent-strip" hidden>
+              <div id="intent-chips"></div>
+            </section>
+
+            <div class="content-scroller" id="content-scroller">
+              <section class="recommend-view" id="recommend-view">
+                <nav class="channel-grid" aria-label="频道">
+                  <button><span class="icon-factory">∪</span><b>淘工厂</b></button>
+                  <button><span class="icon-sign">¥</span><b>红包签到</b></button>
+                  <button><span class="icon-coin">币</span><b>领淘金币</b></button>
+                  <button><span class="icon-farm">♣</span><b>芭芭农场</b></button>
+                  <button><span class="icon-station">▣</span><b>菜鸟驿站</b></button>
+                  <button><span class="icon-event">E</span><b>活动</b></button>
+                </nav>
+
+                <section class="operation-grid" aria-label="淘宝活动">
+                  <article class="operation-card live-card">
+                    <header><strong>淘宝直播</strong><span>▥</span></header>
+                    <div class="op-photo op-photo-fashion"><i>LIVE</i></div>
+                    <p>重点旗舰店</p>
+                  </article>
+                  <article class="operation-card subsidy-card">
+                    <header><strong>百亿补贴</strong><span>领国补</span></header>
+                    <div class="op-photo op-photo-jewel"></div>
+                    <p><b>¥2790</b><em>补贴价</em></p>
+                  </article>
+                  <article class="operation-card flash-card">
+                    <header><strong>淘宝秒杀</strong><span>限时抢</span></header>
+                    <div class="op-photo op-photo-polo"></div>
+                    <p><b>¥118</b><em>秒杀价</em></p>
+                  </article>
+                </section>
+
+                <p id="recommend-subtitle" hidden></p>
+                <div class="product-grid recommend-grid" id="recommend-grid"></div>
+              </section>
+
+              <section class="search-view" id="search-view" hidden>
+                <div class="query-context">
+                  <button id="back-to-home" type="button" aria-label="返回">‹</button>
+                  <div><small>正在搜索</small><strong>男生白色运动鞋</strong></div>
+                  <button class="query-mic" data-open-voice type="button" aria-label="语音补充条件">◉</button>
+                </div>
+                <nav class="filter-row" aria-label="搜索筛选">
+                  <button class="active">综合</button><button>销量</button><button>价格 ↕</button><button>筛选 ☷</button>
+                </nav>
+                <div class="search-tip" id="search-tip">
+                  <span>按住屏幕补充条件</span>
+                  <p>例如：“要能增高的，500 元以内”</p>
+                </div>
+                <div class="match-heading" id="exact-heading" hidden><strong>完全符合</strong><span id="exact-count"></span></div>
+                <div class="product-grid" id="search-grid"></div>
+                <div class="near-section" id="near-section" hidden>
+                  <div class="match-heading"><strong>接近条件</strong><span>以下商品未完全满足硬条件</span></div>
+                  <div class="product-grid" id="near-grid"></div>
+                </div>
+              </section>
+            </div>
+
+            <button data-open-voice class="voice-fab" aria-label="语音输入">
+              <span class="voice-fab-core">
+                <img src="/assets/voice-avatar.png" alt="" />
+              </span>
+            </button>
+
+            <nav class="bottom-nav" id="bottom-nav" aria-label="主导航">
+              <button class="active home-tab" data-tab="recommend">
+                <span class="nav-home">淘</span><b>首页</b>
+              </button>
+              <button>
+                <span class="nav-icon">
+                  <svg viewBox="0 0 28 28" aria-hidden="true">
+                    <rect x="3.5" y="5" width="21" height="18" rx="5"></rect>
+                    <path class="nav-fill" d="M11.5 10.2 18 14l-6.5 3.8z"></path>
+                  </svg>
+                </span>
+                <b>视频</b>
+              </button>
+              <button>
+                <span class="nav-icon nav-message">
+                  <svg viewBox="0 0 28 28" aria-hidden="true">
+                    <path d="M4 7.5A4.5 4.5 0 0 1 8.5 3h11A4.5 4.5 0 0 1 24 7.5v8a4.5 4.5 0 0 1-4.5 4.5H13l-5.5 4v-4A4.5 4.5 0 0 1 4 15.5z"></path>
+                    <path class="nav-dots" d="M9 11.8h.1M14 11.8h.1M19 11.8h.1"></path>
+                  </svg>
+                  <i>32</i>
+                </span>
+                <b>消息</b>
+              </button>
+              <button>
+                <span class="nav-icon">
+                  <svg viewBox="0 0 28 28" aria-hidden="true">
+                    <path d="M3 4h3l2.2 13.2h12.9l2-9.2H7"></path>
+                    <circle cx="10.5" cy="22.5" r="1.5"></circle>
+                    <circle cx="20" cy="22.5" r="1.5"></circle>
+                  </svg>
+                </span>
+                <b>购物车</b>
+              </button>
+              <button>
+                <span class="nav-icon">
+                  <svg viewBox="0 0 28 28" aria-hidden="true">
+                    <circle cx="14" cy="14" r="10.5"></circle>
+                    <path d="M9.5 15.3c1.3 2 2.8 3 4.5 3s3.2-1 4.5-3"></path>
+                  </svg>
+                </span>
+                <b>我的淘宝</b>
+              </button>
+            </nav>
+
+            <div class="onboarding" id="onboarding" hidden>
+              <button id="dismiss-onboarding" aria-label="关闭提示">×</button>
+              <span class="onboarding-orb">◉</span>
+              <strong>按住屏幕，说出你现在想看什么</strong>
+              <p>推荐和搜索都能随你的想法即时改变</p>
+              <i></i>
+            </div>
+
+            <div class="voice-sheet" id="voice-sheet" hidden>
+              <div class="voice-backdrop"></div>
+              <section class="voice-panel" role="dialog" aria-modal="true" aria-labelledby="voice-title">
+                <button class="voice-close" id="voice-close" type="button" aria-label="关闭">×</button>
+                <p class="voice-kicker"><span>✦</span> 即时意图</p>
+                <h2 id="voice-title">按住，说出你的想法</h2>
+                <p class="voice-hint" id="voice-hint">可以说想增加、减少或补充的条件</p>
+                <div class="wave" id="wave" aria-hidden="true">
+                  <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                </div>
+                <div class="transcript" id="transcript">等待你说话…</div>
+                <div class="voice-core">
+                  <div class="voice-keyword-orbit" id="voice-keyword-orbit" aria-live="polite"></div>
+                  <button class="hold-button" id="hold-button" type="button">
+                    <span class="hold-visual">
+                      <img src="/assets/voice-agent-core-tight.png" alt="" />
+                    </span>
+                    <strong>按住或轻点</strong>
+                  </button>
+                </div>
+                <button class="clear-intents" id="clear-all-intents" type="button" hidden>清除全部意图</button>
+                <form class="fallback-form" id="fallback-form">
+                  <input id="fallback-input" autocomplete="off" placeholder="也可以在这里输入…" />
+                  <button type="submit">发送</button>
+                </form>
+                <div class="examples" id="examples"></div>
+                <p class="privacy">语音仅用于本次理解，不保存录音</p>
+              </section>
+            </div>
+
+          </div>
+          <div class="home-indicator"></div>
+        </div>
+        <p class="desktop-tip">按住说话 · 理解意图 · 即刻重排</p>
+      </section>
+    </main>
+    <div class="toast" id="toast" hidden></div>
+    <script src="/app.js?v=20260718-preset-cases-v2"></script>
+  </body>
+</html>

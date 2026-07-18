@@ -1,0 +1,1188 @@
+from __future__ import annotations
+
+import json
+import os
+import re
+from http import HTTPStatus
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).parent
+STATIC_DIR = ROOT / "static"
+PORT = int(os.environ.get("PORT", "8000"))
+
+
+def product(
+    product_id: str,
+    title: str,
+    category: str,
+    price: int,
+    image: str,
+    *,
+    attributes: list[str],
+    base_score: int,
+    sales: str,
+    novelty: int = 0,
+    brand: str = "通用",
+    origin: str = "国产",
+    audiences: list[str] | None = None,
+    styles: list[str] | None = None,
+    goals: list[str] | None = None,
+    trend: int = 0,
+) -> dict[str, Any]:
+    return {
+        "id": product_id,
+        "title": title,
+        "category": category,
+        "price": price,
+        "image": f"/assets/{image}.svg",
+        "attributes": attributes,
+        "baseScore": base_score,
+        "sales": sales,
+        "novelty": novelty,
+        "brand": brand,
+        "origin": origin,
+        "audiences": audiences or [],
+        "styles": styles or [],
+        "goals": goals or [],
+        "trend": trend,
+    }
+
+
+PRODUCTS = [
+    product("run-01", "Nike 轻云缓震男士跑鞋 透气回弹", "跑鞋", 399, "run-shoe", attributes=["男款", "白色", "运动鞋", "缓震", "轻量"], base_score=99, sales="2万+人付款", brand="耐克", origin="进口", audiences=["学生", "新手", "男朋友"], styles=["运动风"], trend=9),
+    product("run-02", "城市疾风竞速跑鞋 碳板推进", "跑鞋", 699, "run-shoe", attributes=["男款", "黑色", "运动鞋", "碳板"], base_score=97, sales="8000+人付款"),
+    product("run-03", "日常慢跑厚底运动鞋", "跑鞋", 269, "run-shoe", attributes=["男款", "白色", "运动鞋", "厚底"], base_score=96, sales="5万+人付款"),
+    product("run-04", "专业支撑跑步鞋 稳定保护", "跑鞋", 459, "run-shoe", attributes=["男款", "灰色", "运动鞋", "支撑"], base_score=94, sales="1万+人付款"),
+    product("shoe-01", "小白鞋男款 隐形增高 5cm", "休闲鞋", 329, "white-shoe", attributes=["男款", "白色", "运动鞋", "增高", "厚底"], base_score=92, sales="3万+人付款"),
+    product("shoe-02", "复古德训鞋男 百搭白色", "休闲鞋", 289, "white-shoe", attributes=["男款", "白色", "运动鞋", "复古"], base_score=90, sales="1万+人付款"),
+    product("shoe-03", "轻量厚底休闲运动鞋 增高", "休闲鞋", 459, "white-shoe", attributes=["男款", "白色", "运动鞋", "增高", "轻量"], base_score=88, sales="6000+人付款"),
+    product("shoe-04", "板鞋男夏季透气简约小白鞋", "休闲鞋", 199, "white-shoe", attributes=["男款", "白色", "运动鞋", "透气"], base_score=87, sales="7万+人付款"),
+    product("shoe-05", "潮流老爹鞋男 增高厚底", "休闲鞋", 499, "white-shoe", attributes=["男款", "白色", "运动鞋", "增高", "厚底"], base_score=86, sales="9000+人付款"),
+    product("shoe-06", "真皮拼色休闲鞋 通勤男款", "休闲鞋", 559, "white-shoe", attributes=["男款", "白色", "运动鞋", "真皮"], base_score=84, sales="3000+人付款"),
+    product("shoe-07", "软底基础款白色运动鞋", "休闲鞋", 159, "white-shoe", attributes=["男款", "白色", "运动鞋", "软底"], base_score=83, sales="10万+人付款"),
+    product("shoe-08", "奶油白厚底增高运动鞋", "休闲鞋", 529, "white-shoe", attributes=["男款", "白色", "运动鞋", "增高", "厚底"], base_score=82, sales="4000+人付款"),
+    product("home-01", "原木风移动边几 小户型置物", "家居", 189, "side-table", attributes=["原木风", "家具", "小户型", "浅色"], base_score=76, sales="2万+人付款", styles=["极简风", "ins风"], goals=["提升幸福感"]),
+    product("home-02", "奶油复古空气炸烤箱 厨房多功能", "家居", 899, "armchair", attributes=["奶油风", "家电", "厨房"], base_score=73, sales="5000+人付款"),
+    product("home-03", "暖光氛围台灯 卧室阅读灯", "家居", 129, "lamp", attributes=["原木风", "灯具", "卧室"], base_score=71, sales="6万+人付款"),
+    product("home-04", "免打孔洞洞板 桌面收纳墙", "收纳", 79, "storage", attributes=["家居", "收纳", "桌面"], base_score=69, sales="8万+人付款"),
+    product("home-05", "日式折叠脏衣篮 三层分类", "收纳", 99, "storage", attributes=["家居", "收纳", "日式"], base_score=68, sales="3万+人付款"),
+    product("home-06", "原木床头柜 窄缝抽屉收纳", "家居", 239, "side-table", attributes=["原木风", "家具", "收纳"], base_score=67, sales="1万+人付款"),
+    product("home-07", "模块化透明鞋盒 防尘可叠放", "收纳", 69, "storage", attributes=["家居", "收纳", "鞋盒"], base_score=65, sales="10万+人付款"),
+    product("home-08", "羊羔绒休闲椅 原木脚踏", "家居", 599, "armchair", attributes=["原木风", "家具", "客厅"], base_score=64, sales="7000+人付款"),
+    product("cup-01", "高颜值吸管保温杯 便携随行水杯", "水杯", 89, "water-cup", attributes=["水杯", "保温杯", "吸管杯", "便携", "耐脏"], base_score=63, sales="5万+人付款", audiences=["学生", "儿童"], styles=["可爱"], goals=["提升幸福感"], trend=8),
+    product("cup-02", "简约大容量运动水杯 Tritan 材质", "水杯", 59, "water-cup-blue", attributes=["水杯", "运动水杯", "大容量", "便携"], base_score=62, sales="3万+人付款"),
+    product("beauty-01", "丝绒哑光显白口红 持久不沾杯", "美妆", 129, "fresh", attributes=["口红", "彩妆", "红色", "送礼"], base_score=61, sales="4万+人付款"),
+    product("beauty-02", "水光镜面唇釉礼盒 日常百搭色", "美妆", 159, "fresh", attributes=["口红", "唇釉", "彩妆", "送礼"], base_score=60, sales="2万+人付款"),
+    product("earbuds-01", "主动降噪蓝牙耳机 入耳式长续航", "数码", 299, "fresh", attributes=["耳机", "蓝牙耳机", "无线", "降噪"], base_score=61, sales="8万+人付款"),
+    product("earbuds-02", "开放式无线耳机 运动防水轻量", "数码", 239, "fresh", attributes=["耳机", "无线", "运动", "防水"], base_score=60, sales="5万+人付款"),
+    product("phone-01", "Apple 轻薄旗舰智能手机 高清影像长续航", "数码", 3299, "fresh", attributes=["手机", "智能手机", "黑色", "数码"], base_score=61, sales="3万+人付款", brand="苹果", origin="进口", styles=["高级感"], trend=8),
+    product("phone-02", "国产大屏高刷手机 影像防抖快充", "数码", 2499, "fresh", attributes=["手机", "智能手机", "蓝色", "数码"], base_score=60, sales="2万+人付款", brand="国产品牌", origin="国产", audiences=["学生"], trend=7),
+    product("coffee-01", "奶油白意式咖啡机 家用小型", "家电", 699, "fresh", attributes=["咖啡机", "小家电", "厨房", "奶油风", "小巧"], base_score=61, sales="1万+人付款", audiences=["新手"], styles=["可爱"]),
+    product("coffee-02", "研磨一体咖啡机 蒸汽奶泡系统", "家电", 1299, "fresh", attributes=["咖啡机", "小家电", "厨房", "家用"], base_score=60, sales="8000+人付款"),
+    product("snack-01", "人气零食大礼包 休闲小吃组合", "食品", 79, "fresh", attributes=["零食", "小吃", "礼盒", "送礼"], base_score=61, sales="10万+人付款"),
+    product("snack-02", "坚果饼干下午茶零食组合礼盒", "食品", 99, "fresh", attributes=["零食", "饼干", "坚果", "送礼"], base_score=60, sales="7万+人付款"),
+    product("pet-01", "低敏全价猫粮 成猫营养主粮", "宠物", 139, "fresh", attributes=["猫粮", "宠物用品", "主粮", "大容量"], base_score=61, sales="6万+人付款"),
+    product("pet-02", "鲜肉全价犬粮 中小型犬主粮", "宠物", 159, "fresh", attributes=["狗粮", "宠物用品", "主粮", "大容量"], base_score=60, sales="4万+人付款"),
+    product("baby-01", "高景观轻便婴儿推车 可折叠双向", "母婴", 899, "fresh", attributes=["婴儿车", "宝宝用品", "轻便", "可折叠"], base_score=61, sales="2万+人付款"),
+    product("baby-02", "一键收车轻量婴儿推车 可登机", "母婴", 699, "fresh", attributes=["婴儿车", "宝宝用品", "轻量", "便携"], base_score=60, sales="1万+人付款"),
+    product("outdoor-01", "自动速开露营帐篷 防雨加厚", "户外", 399, "fresh", attributes=["帐篷", "露营", "防水", "户外"], base_score=61, sales="3万+人付款"),
+    product("outdoor-02", "轻量双人徒步帐篷 便携防风", "户外", 529, "fresh", attributes=["帐篷", "露营", "轻量", "便携"], base_score=60, sales="2万+人付款"),
+    product("bag-01", "真皮通勤单肩包 简约大容量", "箱包", 459, "fresh", attributes=["包包", "女包", "单肩包", "通勤", "大容量", "真皮"], base_score=61, sales="3万+人付款", audiences=["妈妈"], styles=["高级感"]),
+    product("bag-02", "复古腋下包 轻便百搭女包", "箱包", 239, "fresh", attributes=["包包", "女包", "腋下包", "通勤"], base_score=60, sales="2万+人付款"),
+    product("office-01", "客制化机械键盘 无线三模热插拔", "办公", 399, "fresh", attributes=["键盘", "机械键盘", "无线", "办公"], base_score=61, sales="5万+人付款"),
+    product("office-02", "静音键鼠套装 蓝牙多设备切换", "办公", 189, "fresh", attributes=["键盘", "鼠标", "无线", "办公"], base_score=60, sales="4万+人付款"),
+    product("car-01", "车载手机支架 强力吸盘稳固防抖", "汽车用品", 69, "fresh", attributes=["车载支架", "手机支架", "汽车用品", "车载"], base_score=61, sales="8万+人付款"),
+    product("car-02", "磁吸车载支架 出风口迷你导航架", "汽车用品", 49, "fresh", attributes=["车载支架", "手机支架", "汽车用品", "磁吸", "小巧"], base_score=60, sales="6万+人付款"),
+    product("skincare-01", "舒缓修护面霜 保湿屏障护理", "美妆", 199, "fresh", attributes=["护肤", "面霜", "保湿", "敏感肌"], base_score=61, sales="4万+人付款", audiences=["妈妈"], styles=["高级感"]),
+    product("skincare-02", "补水精华液 清透保湿护肤套装", "美妆", 259, "fresh", attributes=["护肤", "精华", "保湿", "套装"], base_score=60, sales="3万+人付款"),
+    product("dress-01", "法式碎花连衣裙 夏季收腰显瘦", "女装", 229, "fresh", attributes=["连衣裙", "裙子", "女款", "穿搭", "浅色"], base_score=61, sales="5万+人付款", audiences=["学生"], styles=["法式", "高级感"], trend=8),
+    product("dress-02", "纯色吊带长裙 度假通勤两穿", "女装", 189, "fresh", attributes=["连衣裙", "裙子", "女款", "通勤"], base_score=60, sales="3万+人付款", styles=["极简风"]),
+    product("fruit-01", "当季新鲜水果礼盒 多品种组合", "生鲜", 109, "fresh", attributes=["水果", "生鲜", "礼盒", "送礼"], base_score=61, sales="6万+人付款"),
+    product("fruit-02", "阳光玫瑰葡萄与橙子组合装", "生鲜", 89, "fresh", attributes=["水果", "葡萄", "橙子", "生鲜"], base_score=60, sales="4万+人付款"),
+    product("book-01", "年度高分文学小说精选套装", "图书", 128, "fresh", attributes=["图书", "书籍", "小说", "套装"], base_score=61, sales="2万+人付款"),
+    product("book-02", "效率提升学习书籍与文具组合", "图书", 99, "fresh", attributes=["图书", "书籍", "文具", "学习"], base_score=60, sales="1万+人付款"),
+    product("perfume-01", "清新木质调香水 持久淡香", "香水", 299, "fresh", attributes=["香水", "香氛", "清新", "送礼"], base_score=61, sales="3万+人付款", audiences=["妈妈"], styles=["高级感"]),
+    product("perfume-02", "花果香氛香水礼盒 通勤淡香", "香水", 239, "fresh", attributes=["香水", "香氛", "通勤", "礼盒"], base_score=60, sales="2万+人付款"),
+    product("fresh-01", "质感绝了！简约白色 Polo 短袖", "服饰", 137, "fresh", attributes=["男款", "白色", "穿搭", "新鲜感"], base_score=58, sales="400+人付款", novelty=10),
+    product("fresh-02", "美式街头黑色卫衣 宽松复古穿搭", "服饰", 159, "fresh", attributes=["男款", "黑色", "穿搭", "新鲜感"], base_score=57, sales="3000+人付款", novelty=9),
+    product("fresh-03", "新款圆珍珠白色棒球帽 设计感", "配饰", 148, "fresh", attributes=["白色", "配饰", "新鲜感"], base_score=56, sales="1000+人付款", novelty=8),
+    product("fresh-04", "银白轻量复古运动鞋 潮流新品", "休闲鞋", 689, "fresh", attributes=["男款", "白色", "运动鞋", "新鲜感", "轻量"], base_score=55, sales="400+人付款", novelty=9, styles=["高级感"], trend=9),
+    product("projector-01", "便携智能投影仪 露营卧室两用", "数码", 899, "fresh", attributes=["投影仪", "便携", "卧室", "露营"], base_score=66, sales="3万+人付款", audiences=["学生", "新手"], styles=["极简风"], goals=["宅家", "提升幸福感"], novelty=7, trend=9),
+    product("camp-chair-01", "月亮折叠椅 户外露营轻量便携", "户外", 129, "armchair", attributes=["折叠椅", "露营椅", "露营", "轻量", "便携"], base_score=64, sales="6万+人付款", audiences=["新手"], goals=["露营"], novelty=6, trend=8),
+    product("camp-light-01", "暖光露营灯 长续航防水氛围灯", "户外", 99, "lamp", attributes=["露营灯", "露营", "防水", "氛围"], base_score=63, sales="5万+人付款", audiences=["新手"], goals=["露营", "提升幸福感"], novelty=7, trend=8),
+    product("camp-repel-01", "户外驱蚊灯 露营便携静音防护", "户外", 69, "fresh", attributes=["驱蚊", "露营", "便携", "户外"], base_score=62, sales="4万+人付款", audiences=["儿童"], goals=["露营"], novelty=5, trend=7),
+    product("move-box-01", "加厚搬家纸箱 带扣可重复收纳", "收纳", 49, "storage", attributes=["搬家箱", "纸箱", "搬家", "收纳", "耐脏"], base_score=64, sales="8万+人付款", goals=["搬家"]),
+    product("move-cart-01", "折叠平板搬运车 静音承重省力", "家居", 159, "fresh", attributes=["搬运车", "搬家", "折叠", "耐用"], base_score=61, sales="3万+人付款", goals=["搬家"]),
+    product("cat-litter-01", "低尘豆腐猫砂 快速结团除味", "宠物", 69, "fresh", attributes=["猫砂", "猫用品", "除味", "耐脏"], base_score=66, sales="10万+人付款", audiences=["新手"], goals=["养猫"], trend=8),
+    product("cat-scratch-01", "原木猫抓板窝一体 耐磨不掉屑", "宠物", 119, "armchair", attributes=["猫抓板", "猫窝", "猫用品", "耐用"], base_score=63, sales="5万+人付款", audiences=["新手"], goals=["养猫"], styles=["极简风"]),
+    product("tool-01", "家用多功能电动工具箱 装修安装", "五金", 299, "fresh", attributes=["工具箱", "电钻", "装修", "耐用"], base_score=64, sales="4万+人付款", audiences=["新手"], goals=["装修", "搬家"]),
+    product("decor-01", "现代极简装饰画 客厅沙发背景墙", "家居", 169, "fresh", attributes=["装饰画", "客厅", "装修", "浅色"], base_score=62, sales="3万+人付款", styles=["极简风", "高级感"], goals=["装修", "客厅氛围"], novelty=6),
+    product("wedding-gift-01", "新婚双人餐具礼盒 高级感包装", "家居", 299, "fresh", attributes=["结婚礼物", "餐具", "礼盒", "送礼"], base_score=62, sales="2万+人付款", styles=["高级感"], goals=["结婚"]),
+    product("wedding-decor-01", "婚礼氛围灯串 暖光布置套装", "家居", 89, "lamp", attributes=["婚礼布置", "灯串", "氛围", "结婚"], base_score=60, sales="1万+人付款", goals=["结婚", "提升幸福感"], novelty=6),
+    product("travel-case-01", "轻量万向轮行李箱 可登机耐磨", "箱包", 329, "fresh", attributes=["行李箱", "旅行", "轻量", "耐脏", "耐用"], base_score=67, sales="8万+人付款", audiences=["学生"], goals=["旅行", "毕业"], trend=8),
+    product("travel-power-01", "自带线快充充电宝 旅行便携", "数码", 129, "fresh", attributes=["充电宝", "旅行", "便携", "快充"], base_score=66, sales="10万+人付款", audiences=["学生"], goals=["旅行", "音乐节"], trend=9),
+    product("travel-pillow-01", "记忆棉旅行颈枕 遮光眼罩套装", "家居", 99, "fresh", attributes=["颈枕", "眼罩", "旅行", "睡眠"], base_score=61, sales="4万+人付款", goals=["旅行", "睡得更好"]),
+    product("fitness-mat-01", "高密度防滑瑜伽垫 新手健身", "运动", 89, "fresh", attributes=["瑜伽垫", "健身", "防滑", "耐脏"], base_score=66, sales="9万+人付款", audiences=["新手", "学生"], goals=["健身", "减肥"], trend=8),
+    product("fitness-weight-01", "可调节哑铃套装 居家力量训练", "运动", 259, "fresh", attributes=["哑铃", "健身", "居家", "耐用"], base_score=64, sales="5万+人付款", audiences=["新手"], goals=["健身", "减肥"]),
+    product("fitness-scale-01", "智能体脂秤 多维身体数据分析", "运动", 119, "fresh", attributes=["体脂秤", "健身", "智能"], base_score=63, sales="7万+人付款", goals=["减肥", "健身"], trend=8),
+    product("cook-pan-01", "不粘锅具三件套 新手做饭组合", "厨具", 239, "fresh", attributes=["锅具", "做饭", "不粘", "厨房"], base_score=65, sales="6万+人付款", audiences=["新手", "学生"], goals=["做饭"]),
+    product("cook-knife-01", "家用厨刀砧板组合 抗菌易清洁", "厨具", 159, "fresh", attributes=["厨刀", "砧板", "做饭", "厨房", "耐用"], base_score=62, sales="4万+人付款", audiences=["新手"], goals=["做饭"]),
+    product("cozy-blanket-01", "柔软亲肤沙发毯 宅家午睡披毯", "家居", 99, "fresh", attributes=["毯子", "宅家", "客厅", "柔软"], base_score=62, sales="5万+人付款", styles=["可爱"], goals=["宅家", "提升幸福感"]),
+    product("festival-fan-01", "挂脖小风扇 音乐节户外长续航", "数码", 79, "fresh", attributes=["小风扇", "音乐节", "便携", "户外"], base_score=64, sales="7万+人付款", audiences=["学生"], goals=["音乐节"], novelty=7, trend=9),
+    product("festival-bag-01", "透明斜挎小包 音乐节轻便穿搭", "箱包", 69, "fresh", attributes=["斜挎包", "音乐节", "便携", "穿搭"], base_score=61, sales="3万+人付款", audiences=["学生"], styles=["ins风"], goals=["音乐节"], novelty=8, trend=8),
+    product("bedroom-bedding-01", "A类柔软四件套 奶油色卧室搭配", "家居", 399, "armchair", attributes=["床品", "卧室", "柔软", "浅色"], base_score=65, sales="5万+人付款", styles=["极简风", "ins风"], goals=["卧室舒适", "睡得更好"], trend=7),
+    product("aroma-01", "木质香薰机 暖光静音加湿", "家居", 159, "lamp", attributes=["香薰", "卧室", "静音", "氛围"], base_score=64, sales="6万+人付款", styles=["高级感"], goals=["睡得更好", "提升幸福感", "客厅氛围"], novelty=8, trend=9),
+    product("living-rug-01", "奶油色短绒地毯 客厅氛围升级", "家居", 289, "armchair", attributes=["地毯", "客厅", "浅色", "氛围", "升级"], base_score=62, sales="3万+人付款", styles=["ins风", "高级感"], goals=["客厅氛围", "装修"], novelty=7),
+    product("desk-organizer-01", "模块化桌面文件收纳架 极简办公", "收纳", 79, "storage", attributes=["桌面收纳", "文件架", "办公", "收纳"], base_score=65, sales="8万+人付款", styles=["极简风"], goals=["桌面整洁", "提高工作效率"], trend=8),
+    product("balcony-table-01", "折叠小圆桌 阳台咖啡角桌椅", "家居", 259, "side-table", attributes=["阳台", "咖啡角", "折叠", "家具"], base_score=62, sales="2万+人付款", styles=["ins风"], goals=["阳台咖啡角", "提升幸福感"], novelty=7),
+    product("study-headset-01", "英语听力头戴耳机 降噪轻量", "数码", 199, "fresh", attributes=["耳机", "英语学习", "降噪", "轻量"], base_score=63, sales="4万+人付款", audiences=["学生"], goals=["学英语", "提高工作效率"]),
+    product("happiness-flower-01", "每周鲜花混合花束 居家幸福感", "家居", 79, "fresh", attributes=["鲜花", "花束", "居家", "新鲜感"], base_score=60, sales="2万+人付款", styles=["ins风"], goals=["提升幸福感"], novelty=10, trend=8),
+]
+
+CASE_PRODUCT_GROUPS: dict[str, list[tuple[str, str, int, list[str]]]] = {
+    "rental": [
+        ("奶油色亲肤床品四件套", "家居", 299, ["床品", "舒适睡眠", "出租屋"]),
+        ("原木暖光床头台灯", "灯具", 119, ["台灯", "氛围灯光", "出租屋"]),
+        ("模块化九宫格收纳柜", "收纳", 169, ["收纳柜", "小户型收纳", "出租屋"]),
+        ("木纹静音香薰加湿器", "家居", 139, ["香薰", "幸福感软装", "出租屋"]),
+        ("奶油色柔软短绒地毯", "家居", 189, ["地毯", "幸福感软装", "出租屋"]),
+        ("小户型双层移动边几", "家居", 159, ["边几", "幸福感软装", "出租屋"]),
+        ("免打孔遮光隔热窗帘", "家居", 129, ["窗帘", "舒适睡眠", "出租屋"]),
+        ("慢回弹护颈记忆枕", "家居", 109, ["枕头", "舒适睡眠", "出租屋"]),
+        ("便携高清卧室投影仪", "数码", 899, ["投影仪", "氛围灯光", "出租屋"]),
+        ("日式折叠分类洗衣篮", "收纳", 79, ["洗衣篮", "小户型收纳", "出租屋"]),
+        ("桌面静音大雾量加湿器", "家电", 99, ["加湿器", "幸福感软装", "出租屋"]),
+        ("好养活桌面绿植盆栽", "家居", 59, ["绿植", "幸福感软装", "出租屋"]),
+    ],
+    "concert": [
+        ("自带线快充充电宝", "数码", 129, ["充电宝", "续航补给", "演唱会"]),
+        ("安检友好透明斜挎包", "箱包", 69, ["透明包", "轻装收纳", "演唱会"]),
+        ("长续航挂脖小风扇", "数码", 89, ["小风扇", "户外防护", "演唱会"]),
+        ("一次性轻便雨衣三件装", "户外", 39, ["雨衣", "户外防护", "演唱会"]),
+        ("清爽高倍防晒喷雾", "美妆", 89, ["防晒霜", "户外防护", "演唱会"]),
+        ("演出降噪音乐耳塞", "数码", 79, ["耳塞", "观演体验", "演唱会"]),
+        ("高清便携观演望远镜", "数码", 159, ["望远镜", "观演体验", "演唱会"]),
+        ("可调亮度应援灯棒", "数码", 59, ["应援棒", "观演体验", "演唱会"]),
+        ("防晒百搭棒球帽", "配饰", 69, ["帽子", "户外防护", "演唱会"]),
+        ("轻量折叠排队坐垫", "户外", 49, ["坐垫", "观演体验", "演唱会"]),
+        ("便携防漏运动水杯", "水杯", 79, ["水杯", "续航补给", "演唱会"]),
+        ("防丢可调节手机挂绳", "数码", 39, ["手机挂绳", "轻装收纳", "演唱会"]),
+    ],
+    "happy": [
+        ("每周鲜花高颜值混合花束", "家居", 79, ["鲜花", "新鲜感"]),
+        ("静音陶瓷香薰扩香机", "家居", 159, ["香薰", "新鲜感"]),
+        ("笑脸陶瓷早餐马克杯", "水杯", 69, ["水杯", "可爱", "新鲜感"]),
+        ("暖光蘑菇氛围小夜灯", "灯具", 99, ["台灯", "氛围", "新鲜感"]),
+        ("掌上高清居家投影仪", "数码", 799, ["投影仪", "宅家", "新鲜感"]),
+        ("织物迷你无线音箱", "数码", 199, ["音箱", "无线", "新鲜感"]),
+        ("云朵感亲肤沙发毯", "家居", 119, ["毯子", "柔软", "新鲜感"]),
+        ("奶油色滴滤咖啡机", "家电", 399, ["咖啡机", "厨房", "新鲜感"]),
+        ("桌面自吸水绿植盆栽", "家居", 59, ["绿植", "桌面", "新鲜感"]),
+        ("便携手机照片打印机", "数码", 399, ["照片打印机", "便携", "新鲜感"]),
+        ("复古暖光融蜡灯", "灯具", 169, ["融蜡灯", "香薰", "新鲜感"]),
+        ("温热揉捏腰颈按摩枕", "家居", 229, ["按摩枕", "舒适", "新鲜感"]),
+    ],
+    "sunscreen": [
+        ("清透轻薄面部防晒乳", "防晒霜", 99, ["防晒霜", "面部", "轻薄"]),
+        ("大容量身体防晒喷雾", "防晒霜", 89, ["防晒霜", "身体", "喷雾"]),
+        ("便携补涂防晒棒", "防晒霜", 79, ["防晒霜", "防晒棒", "便携"]),
+        ("儿童温和防晒乳", "防晒霜", 109, ["防晒霜", "儿童", "温和"]),
+        ("敏感肌物理防晒霜", "防晒霜", 129, ["防晒霜", "敏感肌", "物理防晒"]),
+        ("运动防水高倍防晒乳", "防晒霜", 119, ["防晒霜", "防水", "运动"]),
+        ("自然提亮润色防晒霜", "防晒霜", 139, ["防晒霜", "润色", "面部"]),
+        ("清爽透明防晒啫喱", "防晒霜", 89, ["防晒霜", "啫喱", "清爽"]),
+        ("保湿型日常防晒乳", "防晒霜", 109, ["防晒霜", "保湿", "日常"]),
+        ("随身补妆防晒气垫", "防晒霜", 159, ["防晒霜", "气垫", "便携"]),
+        ("海边高倍防晒喷雾", "防晒霜", 129, ["防晒霜", "喷雾", "防水"]),
+        ("哑光控油防晒精华", "防晒霜", 149, ["防晒霜", "控油", "面部"]),
+    ],
+    "dresscase": [
+        ("象牙白收腰衬衫连衣裙", "连衣裙", 269, ["连衣裙", "裙子", "浅色"]),
+        ("浅蓝碎花韩式中长裙", "连衣裙", 239, ["连衣裙", "裙子", "浅色"]),
+        ("奶油色针织鱼尾连衣裙", "连衣裙", 299, ["连衣裙", "裙子", "浅色"]),
+        ("樱花粉韩式A字连衣裙", "连衣裙", 229, ["连衣裙", "裙子", "浅色"]),
+        ("鹅黄色吊带度假长裙", "连衣裙", 219, ["连衣裙", "裙子", "浅色"]),
+        ("薄荷绿百褶收腰长裙", "连衣裙", 259, ["连衣裙", "裙子", "浅色"]),
+        ("燕麦色极简通勤连衣裙", "连衣裙", 289, ["连衣裙", "裙子", "浅色"]),
+        ("白色蕾丝温柔连衣裙", "连衣裙", 319, ["连衣裙", "裙子", "浅色"]),
+        ("淡紫色裹身荷叶边长裙", "连衣裙", 249, ["连衣裙", "裙子", "浅色"]),
+        ("浅蓝牛仔韩式背带裙", "连衣裙", 199, ["连衣裙", "裙子", "浅色"]),
+        ("蜜桃色泡泡袖连衣裙", "连衣裙", 239, ["连衣裙", "裙子", "浅色"]),
+        ("浅灰西装领收腰连衣裙", "连衣裙", 329, ["连衣裙", "裙子", "浅色"]),
+    ],
+    "fitcase": [
+        ("加厚防滑瑜伽垫", "运动", 99, ["瑜伽垫", "训练装备", "健身"]),
+        ("可调节重量哑铃套装", "运动", 399, ["哑铃", "训练装备", "健身"]),
+        ("多维数据智能体脂秤", "运动", 129, ["体脂秤", "数据记录", "健身"]),
+        ("大容量刻度运动水杯", "水杯", 79, ["运动水杯", "补水营养", "健身"]),
+        ("五档阻力弹力带套装", "运动", 69, ["弹力带", "训练装备", "健身"]),
+        ("高密度肌肉放松泡沫轴", "运动", 89, ["泡沫轴", "恢复放松", "健身"]),
+        ("无绳负重智能跳绳", "运动", 119, ["跳绳", "训练装备", "健身"]),
+        ("家用包胶壶铃", "运动", 159, ["壶铃", "训练装备", "健身"]),
+        ("透气缓震综合训练鞋", "运动", 299, ["训练鞋", "训练装备", "健身"]),
+        ("运动数据监测智能手表", "数码", 399, ["运动手表", "数据记录", "健身"]),
+        ("防漏蛋白粉摇摇杯", "水杯", 59, ["摇摇杯", "补水营养", "健身"]),
+        ("迷你深层肌肉筋膜枪", "运动", 229, ["筋膜枪", "恢复放松", "健身"]),
+    ],
+    "wow": [
+        ("磁悬浮绿植桌面盆栽", "家居", 399, ["磁悬浮", "眼前一亮", "新鲜感"]),
+        ("磁吸平衡创意氛围灯", "灯具", 259, ["平衡灯", "眼前一亮", "新鲜感"]),
+        ("口袋便携照片打印机", "数码", 399, ["照片打印机", "眼前一亮", "新鲜感"]),
+        ("透明机身无线蓝牙音箱", "数码", 299, ["音箱", "眼前一亮", "新鲜感"]),
+        ("日出唤醒渐变闹钟灯", "灯具", 229, ["唤醒灯", "眼前一亮", "新鲜感"]),
+        ("动态流沙艺术摆件", "家居", 169, ["流沙画", "眼前一亮", "新鲜感"]),
+        ("迷你银河星空投影仪", "数码", 199, ["星空投影", "眼前一亮", "新鲜感"]),
+        ("无线便携榨汁杯", "家电", 159, ["榨汁杯", "眼前一亮", "新鲜感"]),
+        ("智能桌面香草种植机", "家居", 499, ["种植机", "眼前一亮", "新鲜感"]),
+        ("恒温感应暖杯垫", "家电", 129, ["暖杯垫", "眼前一亮", "新鲜感"]),
+        ("口袋高清数码显微镜", "数码", 269, ["显微镜", "眼前一亮", "新鲜感"]),
+        ("几何暖光香薰扩香机", "家居", 189, ["香薰", "眼前一亮", "新鲜感"]),
+    ],
+}
+
+CASE_PRODUCT_GOALS = {
+    "rental": ["出租屋舒适", "提升幸福感"],
+    "concert": ["看演唱会"],
+    "happy": ["提升幸福感"],
+    "sunscreen": ["户外防护"],
+    "dresscase": ["韩式穿搭"],
+    "fitcase": ["健身"],
+    "wow": ["探索新鲜事物"],
+}
+
+for group, rows in CASE_PRODUCT_GROUPS.items():
+    for index, (title, category, price, attributes) in enumerate(rows, start=1):
+        PRODUCTS.append(
+            product(
+                f"{group}-{index:02d}",
+                title,
+                category,
+                price,
+                "fresh",
+                attributes=attributes + (
+                    ["幸福感精选"] if group == "happy"
+                    else ["眼前一亮精选"] if group == "wow"
+                    else []
+                ),
+                base_score=82 - index,
+                sales=f"{max(1, 13 - index)}万+人付款",
+                novelty=10 if group == "wow" else 9 if group in ("happy", "concert", "fitcase") else 5,
+                goals=CASE_PRODUCT_GOALS[group],
+                styles=["韩式"] if group == "dresscase" else [],
+                trend=10 if group == "wow" else 9 if group in ("happy", "concert", "sunscreen", "fitcase") else 7,
+            )
+        )
+
+PRODUCT_BY_ID = {item["id"]: item for item in PRODUCTS}
+INITIAL_RECOMMENDATIONS = [
+    "fresh-02", "fresh-01", "home-02", "fresh-03", "home-01", "run-01", "fresh-04", "run-03",
+    "home-03", "shoe-03", "run-02", "home-04",
+]
+INITIAL_SEARCH_RESULTS = [
+    "run-01", "shoe-02", "shoe-01", "shoe-04", "run-03", "shoe-06", "shoe-03", "shoe-07",
+    "shoe-05", "shoe-08",
+]
+
+
+def slot(name: str, operator: str, value: Any, strength: str, label: str) -> dict[str, Any]:
+    return {"name": name, "operator": operator, "value": value, "strength": strength, "label": label}
+
+
+COMMODITY_INTENTS = [
+    ("防晒霜", "防晒霜", ("防晒喷雾", "防晒乳", "防晒霜", "防晒")),
+    ("投影仪", "投影仪", ("智能投影仪", "家用投影仪", "投影仪")),
+    ("瑜伽垫", "瑜伽垫", ("健身垫", "瑜伽垫")),
+    ("行李箱", "行李箱", ("旅行箱", "拉杆箱", "行李箱")),
+    ("充电宝", "充电宝", ("移动电源", "充电宝")),
+    ("锅具", "锅具", ("不粘锅", "炒锅", "锅具")),
+    ("香薰", "香薰", ("香薰机", "香薰")),
+    ("鲜花", "鲜花", ("花束", "鲜花")),
+    ("汽车用品", "汽车用品", ("车载手机支架", "汽车用品", "车载支架", "手机支架", "车载")),
+    ("耳机", "蓝牙耳机", ("主动降噪耳机", "蓝牙耳机", "无线耳机")),
+    ("咖啡机", "咖啡机", ("意式咖啡机", "家用咖啡机", "咖啡机")),
+    ("婴儿车", "婴儿车", ("婴儿推车", "宝宝推车", "婴儿车")),
+    ("键盘", "机械键盘", ("机械键盘", "客制化键盘")),
+    ("运动鞋", "运动鞋", ("运动鞋", "小白鞋", "休闲鞋", "鞋子")),
+    ("宠物用品", "宠物用品", ("宠物用品", "宠物商品")),
+    ("宝宝用品", "母婴用品", ("母婴用品", "宝宝用品", "婴儿用品")),
+    ("护肤", "护肤品", ("护肤套装", "护肤品", "护肤", "面霜", "精华液", "精华")),
+    ("口红", "口红", ("口红礼盒", "口红", "唇釉", "唇膏")),
+    ("美妆", "美妆", ("化妆品", "彩妆", "美妆")),
+    ("耳机", "耳机", ("耳机", "耳麦")),
+    ("手机", "手机", ("智能手机", "手机")),
+    ("数码", "数码产品", ("电子产品", "数码产品", "数码")),
+    ("家电", "小家电", ("厨房家电", "小家电", "家电")),
+    ("零食", "零食", ("零食大礼包", "零食礼包", "零食", "小吃", "饼干", "坚果")),
+    ("食品", "食品", ("食品", "吃的")),
+    ("猫粮", "猫粮", ("猫粮", "猫主粮")),
+    ("狗粮", "狗粮", ("狗粮", "犬粮")),
+    ("宠物", "宠物用品", ("宠物", "猫咪用品", "狗狗用品")),
+    ("母婴", "母婴用品", ("母婴", "宝宝")),
+    ("帐篷", "帐篷", ("露营帐篷", "户外帐篷", "帐篷")),
+    ("户外", "户外用品", ("露营装备", "户外用品", "露营", "户外")),
+    ("箱包", "包包", ("单肩包", "腋下包", "女包", "包包", "箱包")),
+    ("办公", "办公用品", ("办公用品", "办公")),
+    ("键盘", "键盘", ("键鼠套装", "键盘")),
+    ("鼠标", "鼠标", ("无线鼠标", "鼠标")),
+    ("连衣裙", "连衣裙", ("碎花裙", "连衣裙", "长裙", "裙子")),
+    ("女装", "女装", ("女士衣服", "女装")),
+    ("穿搭", "衣服", ("男装", "衣服", "服装", "短袖", "T恤", "t恤", "穿搭")),
+    ("水果", "水果", ("水果礼盒", "新鲜水果", "水果", "葡萄", "橙子")),
+    ("生鲜", "生鲜", ("生鲜食品", "生鲜")),
+    ("图书", "图书", ("文学小说", "学习书", "书籍", "图书", "小说", "看书", "买书")),
+    ("文具", "文具", ("学习文具", "文具")),
+    ("香水", "香水", ("香水礼盒", "香水", "香氛")),
+    ("水杯", "水杯", ("运动水杯", "保温杯", "随行杯", "吸管杯", "水杯", "杯子")),
+    ("收纳", "收纳", ("收纳用品", "收纳")),
+    ("家具", "家具", ("床头柜", "边几", "椅子", "桌子", "家具")),
+    ("灯具", "灯具", ("台灯", "阅读灯", "灯具")),
+    ("家居", "家居", ("家居用品", "收拾家", "家居", "家里")),
+    ("跑鞋", "跑鞋", ("跑步鞋", "跑鞋")),
+    ("配饰", "配饰", ("棒球帽", "帽子", "配饰")),
+]
+
+ATTRIBUTE_INTENTS = [
+    ("浅色", "浅色", ("浅色系", "浅色", "颜色浅")),
+    ("大容量", "大一点", ("大一点", "更大", "大号")),
+    ("小巧", "小一点", ("小一点", "更小", "小巧")),
+    ("耐脏", "更耐脏", ("耐脏一点", "更耐脏", "耐脏")),
+    ("耐用", "更耐用", ("更耐用", "耐用一点", "耐用")),
+    ("大容量", "大容量", ("大容量", "容量大")),
+    ("便携", "便携", ("便携", "方便携带", "随身")),
+    ("降噪", "降噪", ("主动降噪", "降噪")),
+    ("保温杯", "保温", ("保温效果", "能保温", "保温")),
+    ("通勤", "通勤", ("上班用", "通勤")),
+    ("送礼", "适合送礼", ("适合送人", "送给朋友", "送礼", "礼物")),
+    ("防水", "防水", ("防雨", "防水")),
+    ("无线", "无线", ("无线", "蓝牙连接")),
+    ("轻量", "更轻", ("更轻一点", "轻一点", "更轻", "轻便", "轻量")),
+    ("真皮", "真皮", ("真皮材质", "真皮")),
+    ("红色", "红色", ("红色", "红的")),
+    ("黑色", "黑色", ("黑色", "黑的")),
+    ("白色", "白色", ("白色", "白的")),
+    ("蓝色", "蓝色", ("蓝色", "蓝的")),
+    ("粉色", "粉色", ("粉色", "粉的")),
+]
+
+AUDIENCE_INTENTS = [
+    ("学生", "适合学生", ("学生党", "适合学生", "学生用")),
+    ("新手", "适合新手", ("入门用", "新手用", "适合新手", "新手")),
+    ("妈妈", "给妈妈", ("妈妈用", "给妈妈买", "送妈妈")),
+    ("男朋友", "男朋友用", ("男朋友用", "给男朋友", "男友用")),
+    ("儿童", "儿童可用", ("小朋友用", "儿童可以用", "儿童用", "孩子用")),
+]
+
+STYLE_INTENTS = [
+    ("韩式", "韩式风格", ("韩式风格", "韩系风格", "韩式", "韩系")),
+    ("法式", "法式", ("法式一点", "法式风", "法式")),
+    ("极简风", "极简风", ("极简一点", "极简风", "极简")),
+    ("ins风", "ins风", ("ins风", "ins一点")),
+    ("高级感", "高级感", ("高级一点", "有高级感", "高级感")),
+    ("可爱", "可爱", ("可爱一点", "可爱风", "可爱")),
+]
+
+BRAND_INTENTS = [
+    ("苹果", "苹果", ("Apple", "apple", "苹果")),
+    ("耐克", "耐克", ("Nike", "nike", "耐克")),
+    ("国产", "国产品牌", ("国产品牌", "国产")),
+]
+
+SCENARIO_INTENTS = [
+    {
+        "key": "rental_comfort",
+        "label": "出租屋更舒服",
+        "triggers": ("我的出租屋还能更舒服吗", "出租屋还能更舒服吗", "出租屋更舒服", "改善出租屋"),
+        "targets": ("舒适睡眠", "氛围灯光", "小户型收纳", "幸福感软装"),
+    },
+    {
+        "key": "concert",
+        "label": "去看演唱会",
+        "triggers": ("我要去看演唱会有什么推荐好物", "去看演唱会有什么推荐", "准备去看演唱会", "我要看演唱会"),
+        "targets": ("续航补给", "轻装收纳", "户外防护", "观演体验"),
+    },
+    {
+        "key": "camping",
+        "label": "去露营",
+        "triggers": ("准备去露营", "想去露营", "我要去露营", "周末去露营"),
+        "targets": ("帐篷", "折叠椅", "露营灯", "驱蚊"),
+    },
+    {
+        "key": "moving",
+        "label": "搬家",
+        "triggers": ("准备搬家", "我要搬家", "最近搬家"),
+        "targets": ("搬家箱", "搬运车", "收纳", "工具箱"),
+    },
+    {
+        "key": "cat",
+        "label": "养猫",
+        "triggers": ("准备养猫", "我要养猫", "刚养猫", "新手养猫"),
+        "targets": ("猫粮", "猫砂", "猫抓板", "猫窝"),
+    },
+    {
+        "key": "renovation",
+        "label": "装修",
+        "triggers": ("准备装修", "我要装修", "新家装修"),
+        "targets": ("工具箱", "灯具", "装饰画", "收纳"),
+    },
+    {
+        "key": "wedding",
+        "label": "结婚",
+        "triggers": ("准备结婚", "我要结婚", "婚礼要准备"),
+        "targets": ("结婚礼物", "婚礼布置", "香水", "家居"),
+    },
+    {
+        "key": "travel",
+        "label": "旅行",
+        "triggers": ("准备去旅行", "我要去旅行", "准备旅游", "我要旅游"),
+        "targets": ("行李箱", "充电宝", "颈枕", "便携"),
+    },
+    {
+        "key": "graduation",
+        "label": "毕业",
+        "triggers": ("我要毕业了", "准备毕业", "毕业季"),
+        "targets": ("行李箱", "图书", "通勤", "充电宝"),
+    },
+    {
+        "key": "hiking",
+        "label": "徒步",
+        "triggers": ("准备去徒步", "我想徒步", "我要徒步"),
+        "targets": ("跑鞋", "水杯", "帐篷", "轻量"),
+    },
+    {
+        "key": "fitness",
+        "label": "健身",
+        "triggers": ("给我推荐点健身好物", "推荐健身好物", "开始健身", "我想健身", "我要健身"),
+        "targets": ("训练装备", "恢复放松", "补水营养", "数据记录"),
+    },
+    {
+        "key": "cooking",
+        "label": "做饭",
+        "triggers": ("学着做饭", "我想做饭", "我要做饭"),
+        "targets": ("锅具", "厨刀", "厨房", "咖啡机"),
+    },
+    {
+        "key": "stay_home",
+        "label": "宅家",
+        "triggers": ("周末宅家", "我想宅家", "我要宅家"),
+        "targets": ("投影仪", "毯子", "零食", "香薰"),
+    },
+    {
+        "key": "music_festival",
+        "label": "音乐节",
+        "triggers": ("准备去音乐节", "我要去音乐节", "去看音乐节"),
+        "targets": ("充电宝", "小风扇", "斜挎包", "防水"),
+    },
+    {
+        "key": "bedroom",
+        "label": "卧室更舒服",
+        "triggers": ("卧室舒服一点", "卧室更舒服", "打造舒服卧室"),
+        "targets": ("床品", "台灯", "香薰", "收纳"),
+    },
+    {
+        "key": "living_room",
+        "label": "客厅有氛围",
+        "triggers": ("客厅更有氛围", "客厅有氛围", "提升客厅氛围"),
+        "targets": ("地毯", "灯具", "装饰画", "香薰"),
+    },
+    {
+        "key": "desk",
+        "label": "桌面更整洁",
+        "triggers": ("桌面更整洁", "整理一下桌面", "桌面太乱"),
+        "targets": ("桌面收纳", "键盘", "文件架", "台灯"),
+    },
+    {
+        "key": "balcony",
+        "label": "阳台咖啡角",
+        "triggers": ("阳台改造成咖啡角", "阳台咖啡角", "打造咖啡角"),
+        "targets": ("咖啡机", "咖啡角", "水杯", "灯具"),
+    },
+    {
+        "key": "work_efficiency",
+        "label": "提高工作效率",
+        "triggers": ("提高工作效率", "工作效率高一点", "办公更高效"),
+        "targets": ("键盘", "桌面收纳", "耳机", "图书"),
+    },
+    {
+        "key": "sleep",
+        "label": "睡得更好",
+        "triggers": ("想睡得更好", "睡得更好", "改善睡眠"),
+        "targets": ("床品", "眼罩", "香薰", "台灯"),
+    },
+    {
+        "key": "weight_loss",
+        "label": "减肥",
+        "triggers": ("我想减肥", "准备减肥", "开始减脂"),
+        "targets": ("体脂秤", "瑜伽垫", "哑铃", "运动水杯"),
+    },
+    {
+        "key": "english",
+        "label": "学英语",
+        "triggers": ("开始学英语", "我要学英语", "提升英语"),
+        "targets": ("英语学习", "图书", "耳机", "文具"),
+    },
+    {
+        "key": "happiness",
+        "label": "提升幸福感",
+        "triggers": ("提升幸福感", "生活更幸福", "提高幸福感"),
+        "targets": ("鲜花", "香薰", "水杯", "家居"),
+    },
+]
+
+EXPLORE_INTENTS = [
+    {
+        "key": "wow",
+        "label": "发现眼前一亮的好物",
+        "triggers": ("有没有让我眼前一亮的好物", "让我眼前一亮的好物", "眼前一亮的东西"),
+    },
+    {
+        "key": "fresh",
+        "label": "发现新鲜事物",
+        "triggers": ("新鲜玩意", "新鲜东西", "没接触过", "不一样的", "随便逛", "探索一下"),
+    },
+    {
+        "key": "trend",
+        "label": "看看近期趋势",
+        "triggers": ("最近流行什么", "最近有什么爆款", "大家最近都在买什么", "最近都在买"),
+    },
+    {
+        "key": "style",
+        "label": "探索适合的风格",
+        "triggers": ("我适合什么风格", "是不是该换风格", "想换个风格"),
+    },
+    {
+        "key": "inspiration",
+        "label": "获得生活灵感",
+        "triggers": (
+            "有什么值得买",
+            "可以买点什么",
+            "买什么东西可以提升幸福感",
+            "买了不会后悔",
+            "提升幸福感的东西",
+        ),
+    },
+    {
+        "key": "upgrade",
+        "label": "发现值得升级的物品",
+        "triggers": ("有什么值得升级", "是不是该换点东西", "该升级什么"),
+    },
+    {
+        "key": "future",
+        "label": "预测可能缺少的物品",
+        "triggers": ("最近可能还缺什么", "我还缺什么", "可能缺点什么"),
+    },
+]
+
+DIRECT_PRODUCT_TERMS = tuple(
+    term
+    for _, _, aliases in COMMODITY_INTENTS
+    for term in aliases
+    if term not in {"露营", "户外", "办公", "穿搭", "家里", "收拾家", "宝宝"}
+)
+
+NEGATIVE_WORDS = ("不要", "不想", "别推", "别给我推", "少点", "少看", "减少", "排除", "看腻", "烦")
+
+
+def extract_alias_slots(
+    text: str,
+    strength: str,
+    definitions: list[tuple[str, str, tuple[str, ...]]],
+    name: str,
+) -> list[dict[str, Any]]:
+    candidates: list[tuple[int, int, int, str, str, str]] = []
+    for value, display, aliases in definitions:
+        for alias in aliases:
+            for match in re.finditer(re.escape(alias), text):
+                candidates.append((len(alias), match.start(), match.end(), value, display, alias))
+
+    selected: list[dict[str, Any]] = []
+    occupied: list[tuple[int, int]] = []
+    selected_values: set[str] = set()
+    for _, start, end, value, display, _ in sorted(candidates, key=lambda item: (-item[0], item[1])):
+        if value in selected_values or any(start < used_end and end > used_start for used_start, used_end in occupied):
+            continue
+        leading_clause = re.split(r"[，,。；;、]", text[:start])[-1]
+        leading_context = leading_clause[-7:]
+        trailing_context = text[end:min(len(text), end + 5)]
+        negative = any(word in leading_context for word in NEGATIVE_WORDS) or any(
+            word in trailing_context for word in ("看腻", "烦了", "太多")
+        )
+        operator = "neq" if negative else "eq"
+        if name == "category":
+            label = f"减少{display}" if negative else f"增加{display}"
+        else:
+            label = f"排除{display}" if negative else display
+        selected.append(slot(name, operator, value, strength, label))
+        occupied.append((start, end))
+        selected_values.add(value)
+    return selected
+
+
+def match_intent_definition(text: str, definitions: list[dict[str, Any]]) -> dict[str, Any] | None:
+    matches = [
+        (len(trigger), definition)
+        for definition in definitions
+        for trigger in definition["triggers"]
+        if trigger.lower() in text.lower()
+    ]
+    return max(matches, key=lambda item: item[0])[1] if matches else None
+
+
+def mode_payload(
+    mode: str,
+    *,
+    confidence: float,
+    evidence: list[str],
+    route_name: str,
+    route_label: str,
+    route_summary: str,
+) -> dict[str, Any]:
+    labels = {
+        "product": "商品意图",
+        "scenario": "场景意图",
+        "explore": "探索意图",
+        "unknown": "待澄清意图",
+    }
+    return {
+        "mode": mode,
+        "modeLabel": labels[mode],
+        "confidence": confidence,
+        "evidence": evidence,
+        "route": {
+            "name": route_name,
+            "label": route_label,
+            "summary": route_summary,
+        },
+    }
+
+
+def parse_intent(transcript: str) -> dict[str, Any]:
+    text = re.sub(r"\s+", "", transcript.strip())
+    hard = any(word in text for word in ("必须", "只要", "只看", "不超过", "以内", "一定要"))
+    strength = "hard" if hard else "soft"
+
+    catalog_slots = extract_alias_slots(text, strength, COMMODITY_INTENTS, "category")
+    attribute_slots = extract_alias_slots(text, strength, ATTRIBUTE_INTENTS, "attribute")
+    audience_slots = extract_alias_slots(text, strength, AUDIENCE_INTENTS, "audience")
+    style_slots = extract_alias_slots(text, strength, STYLE_INTENTS, "style")
+    brand_slots = extract_alias_slots(text, strength, BRAND_INTENTS, "brand")
+    product_slots = catalog_slots + attribute_slots + audience_slots + style_slots + brand_slots
+
+    direct_product_terms = sorted(
+        {term for term in DIRECT_PRODUCT_TERMS if term.lower() in text.lower()},
+        key=len,
+        reverse=True,
+    )
+    explore_definition = match_intent_definition(text, EXPLORE_INTENTS)
+    scenario_definition = match_intent_definition(text, SCENARIO_INTENTS)
+
+    if explore_definition and not direct_product_terms:
+        explore_slot = slot("attribute", "eq", "新鲜感", "soft", explore_definition["label"])
+        explore_slot.update({"sourceMode": "explore", "sourceKey": explore_definition["key"]})
+        return {
+            "type": "explore",
+            "polarity": "neutral",
+            "slots": [explore_slot],
+            "scope": "session",
+            "transcript": transcript,
+            "exploreTheme": explore_definition["key"],
+            **mode_payload(
+                "explore",
+                confidence=0.94,
+                evidence=[trigger for trigger in explore_definition["triggers"] if trigger in text][:2],
+                route_name="inspiration_discovery",
+                route_label="灵感启发推荐",
+                route_summary=f"围绕“{explore_definition['label']}”增加新鲜度、趋势性与跨品类多样性",
+            ),
+        }
+
+    if scenario_definition and not direct_product_terms:
+        scenario_slots = []
+        for target in scenario_definition["targets"]:
+            target_slot = slot("category", "eq", target, "soft", target)
+            target_slot.update({"sourceMode": "scenario", "sourceKey": scenario_definition["key"]})
+            scenario_slots.append(target_slot)
+        return {
+            "type": "pull",
+            "polarity": "positive",
+            "slots": scenario_slots,
+            "scope": "session",
+            "transcript": transcript,
+            "scenario": {
+                "key": scenario_definition["key"],
+                "label": scenario_definition["label"],
+                "targets": list(scenario_definition["targets"]),
+            },
+            **mode_payload(
+                "scenario",
+                confidence=0.96,
+                evidence=[trigger for trigger in scenario_definition["triggers"] if trigger in text][:2],
+                route_name="scenario_bundle",
+                route_label="场景商品组合",
+                route_summary=f"把“{scenario_definition['label']}”拆成 {'、'.join(scenario_definition['targets'])}",
+            ),
+        }
+
+    slots = list(product_slots)
+    intent_type = "pull"
+    polarity = "positive"
+    if any(item["operator"] == "neq" for item in product_slots):
+        intent_type = "exclude"
+        polarity = "negative"
+
+    remove_height = any(phrase in text for phrase in ("不要增高", "不想增高", "取消增高"))
+    if remove_height:
+        intent_type = "correct"
+        polarity = "negative"
+        slots.append(slot("attribute", "neq", "增高", "hard", "排除增高"))
+    elif "增高" in text:
+        slots.append(slot("attribute", "eq", "增高", strength, "增高"))
+
+    if "不是女" in text or "不要女" in text:
+        intent_type = "correct"
+        slots.append(slot("attribute", "neq", "女款", "hard", "排除女款"))
+    if "男款" in text or "男生" in text or "是男" in text:
+        if "不是女" in text:
+            intent_type = "correct"
+        slots.append(slot("attribute", "eq", "男款", strength, "男款"))
+
+    price_match = re.search(r"(\d{2,5})元?(?:以内|以下|之内|以内的|以下的)", text)
+    if price_match:
+        value = int(price_match.group(1))
+        slots.append(slot("price", "lte", value, "hard", f"≤¥{value}"))
+    if any(phrase in text for phrase in ("便宜一点", "更便宜", "价格低一点")):
+        slots.append(slot("priceOrder", "eq", "lower", "soft", "更便宜"))
+    if any(phrase in text for phrase in ("贵一点", "更贵", "预算高一点")):
+        slots.append(slot("priceOrder", "eq", "higher", "soft", "预算更高"))
+
+    if slots:
+        evidence = direct_product_terms[:2]
+        evidence.extend(item["label"] for item in slots if item["label"] not in evidence)
+        return {
+            "type": intent_type,
+            "polarity": polarity,
+            "slots": slots,
+            "scope": "session",
+            "transcript": transcript,
+            **mode_payload(
+                "product",
+                confidence=0.92 if catalog_slots else 0.84,
+                evidence=evidence[:4],
+                route_name="constraint_ranking",
+                route_label="商品约束排序",
+                route_summary="按类目、属性、人群、风格、品牌和预算约束进行筛选与排序",
+            ),
+        }
+
+    return {
+        "type": "unknown",
+        "polarity": "neutral",
+        "slots": [],
+        "scope": "session",
+        "transcript": transcript,
+        **mode_payload(
+            "unknown",
+            confidence=0.25,
+            evidence=[],
+            route_name="clarification",
+            route_label="等待补充",
+            route_summary="请补充商品、生活场景，或直接说想探索什么",
+        ),
+    }
+
+
+def condition_key(condition: dict[str, Any]) -> tuple[str, Any]:
+    return condition["name"], condition["value"]
+
+
+def merge_conditions(existing: list[dict[str, Any]], intent: dict[str, Any]) -> list[dict[str, Any]]:
+    merged = [dict(item) for item in existing]
+    incoming_slots = intent.get("slots", [])
+    for incoming in incoming_slots:
+        opposite = "neq" if incoming["operator"] == "eq" else "eq" if incoming["operator"] == "neq" else None
+        merged = [
+            item
+            for item in merged
+            if condition_key(item) != condition_key(incoming)
+            and not (
+                opposite
+                and item["name"] == incoming["name"]
+                and item["value"] == incoming["value"]
+                and item["operator"] == opposite
+            )
+        ]
+        merged.append(dict(incoming))
+    return merged
+
+
+def product_contains_value(product_item: dict[str, Any], value: Any) -> bool:
+    return (
+        product_item["category"] == value
+        or value in product_item["attributes"]
+        or value in product_item["audiences"]
+        or value in product_item["styles"]
+        or value in product_item["goals"]
+        or product_item["brand"] == value
+        or product_item["origin"] == value
+    )
+
+
+def product_matches(product_item: dict[str, Any], condition: dict[str, Any]) -> bool:
+    name, operator, value = condition["name"], condition["operator"], condition["value"]
+    if name == "price":
+        return product_item["price"] <= value if operator == "lte" else product_item["price"] >= value
+    if name == "priceOrder":
+        return True
+    if name == "category":
+        present = product_contains_value(product_item, value)
+        if value == "家居":
+            present = present or product_item["category"] == "收纳"
+    elif name == "audience":
+        present = value in product_item["audiences"]
+    elif name == "style":
+        present = value in product_item["styles"]
+    elif name == "brand":
+        present = product_item["origin"] == "国产" if value == "国产" else product_item["brand"] == value
+    else:
+        present = value in product_item["attributes"] or value in product_item["goals"]
+    return not present if operator == "neq" else present
+
+
+def rank_product_results(scene: str, conditions: list[dict[str, Any]]) -> dict[str, list[str]]:
+    scored: list[tuple[float, dict[str, Any]]] = []
+    hard = [item for item in conditions if item["strength"] == "hard"]
+    for item in PRODUCTS:
+        if scene == "search" and not all(tag in item["attributes"] for tag in ("男款", "白色", "运动鞋")):
+            continue
+        score = float(item["baseScore"])
+        for condition in conditions:
+            if condition["name"] == "priceOrder":
+                price_signal = min(item["price"], 4000) / 100
+                score += -price_signal if condition["value"] == "lower" else price_signal
+                continue
+            matches = product_matches(item, condition)
+            if condition["strength"] == "hard":
+                score += 35 if matches else -120
+            elif condition["operator"] == "neq":
+                score += 8 if matches else -55
+            else:
+                score += 48 if matches else -4
+        if any(condition["value"] == "新鲜感" for condition in conditions):
+            score += item["novelty"] * 8
+        scored.append((score, item))
+
+    scored.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
+    exact = [item["id"] for _, item in scored if all(product_matches(item, condition) for condition in hard)]
+    positive_categories = [
+        condition
+        for condition in conditions
+        if condition["name"] == "category" and condition["operator"] == "eq"
+    ]
+    if scene == "recommend" and len(positive_categories) > 1:
+        remaining = list(exact)
+        interleaved: list[str] = []
+        while remaining:
+            added = False
+            for condition in positive_categories:
+                next_id = next(
+                    (item_id for item_id in remaining if product_matches(PRODUCT_BY_ID[item_id], condition)),
+                    None,
+                )
+                if next_id is not None:
+                    remaining.remove(next_id)
+                    interleaved.append(next_id)
+                    added = True
+            if not added:
+                break
+        exact = interleaved + remaining
+    near = [item["id"] for _, item in scored if item["id"] not in exact]
+    return {"exact": exact, "near": near}
+
+
+def scenario_definition_for(key: str | None) -> dict[str, Any] | None:
+    return next((item for item in SCENARIO_INTENTS if item["key"] == key), None)
+
+
+def rank_scenario_results(
+    scene: str,
+    conditions: list[dict[str, Any]],
+    scenario_key: str | None,
+) -> dict[str, list[str]]:
+    definition = scenario_definition_for(scenario_key)
+    scenario_conditions = [item for item in conditions if item.get("sourceMode") == "scenario"]
+    targets = list(definition["targets"]) if definition else []
+    targets.extend(item["value"] for item in scenario_conditions)
+    targets.extend(
+        item["value"]
+        for item in conditions
+        if item.get("sourceMode") is None
+        and item["name"] == "category"
+        and item["operator"] == "eq"
+    )
+    targets = list(dict.fromkeys(targets))
+    refinements = [item for item in conditions if item not in scenario_conditions]
+    hard_refinements = [item for item in refinements if item["strength"] == "hard"]
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for item in PRODUCTS:
+        target_indexes = [index for index, target in enumerate(targets) if product_contains_value(item, target)]
+        if not target_indexes:
+            continue
+        score = float(item["baseScore"]) + 110 - min(target_indexes) * 5
+        for condition in refinements:
+            matches = product_matches(item, condition)
+            if condition["strength"] == "hard":
+                score += 35 if matches else -120
+            elif condition["operator"] == "neq":
+                score += 8 if matches else -45
+            else:
+                score += 28 if matches else -3
+        score += item["trend"] * 2 + item["novelty"]
+        scored.append((score, item))
+
+    scored.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
+    exact_pool = [
+        item["id"]
+        for _, item in scored
+        if all(product_matches(item, condition) for condition in hard_refinements)
+    ]
+    interleaved: list[str] = []
+    remaining = list(exact_pool)
+    while remaining:
+        added = False
+        for target in targets:
+            next_id = next(
+                (item_id for item_id in remaining if product_contains_value(PRODUCT_BY_ID[item_id], target)),
+                None,
+            )
+            if next_id is not None:
+                remaining.remove(next_id)
+                interleaved.append(next_id)
+                added = True
+        if not added:
+            break
+    exact = interleaved + remaining
+    near = [item["id"] for _, item in scored if item["id"] not in exact]
+    return {"exact": exact, "near": near}
+
+
+def diversify_products(scored: list[tuple[float, dict[str, Any]]]) -> list[str]:
+    remaining = list(scored)
+    diversified: list[str] = []
+    used_categories: set[str] = set()
+    while remaining:
+        next_index = next(
+            (index for index, (_, item) in enumerate(remaining) if item["category"] not in used_categories),
+            0,
+        )
+        _, item = remaining.pop(next_index)
+        diversified.append(item["id"])
+        used_categories.add(item["category"])
+    return diversified
+
+
+def rank_explore_results(
+    scene: str,
+    conditions: list[dict[str, Any]],
+    theme: str | None,
+) -> dict[str, list[str]]:
+    refinements = [item for item in conditions if item.get("sourceMode") != "explore"]
+    hard = [item for item in refinements if item["strength"] == "hard"]
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for item in PRODUCTS:
+        if scene == "search" and not all(tag in item["attributes"] for tag in ("男款", "白色", "运动鞋")):
+            continue
+        if not all(product_matches(item, condition) for condition in hard):
+            continue
+        score = float(item["baseScore"]) * 0.35 + item["novelty"] * 9 + item["trend"] * 5
+        if theme == "fresh":
+            score += item["novelty"] * 8
+        elif theme == "trend":
+            score += item["trend"] * 10
+        elif theme == "style":
+            score += len(item["styles"]) * 28 + (8 if item["styles"] else 0)
+        elif theme == "inspiration":
+            score += len(item["goals"]) * 16 + (18 if "提升幸福感" in item["goals"] else 0)
+            score += 36 if "幸福感精选" in item["attributes"] else 0
+        elif theme == "wow":
+            score += 46 if "眼前一亮精选" in item["attributes"] else item["novelty"] * 4
+        elif theme == "upgrade":
+            score += 45 if "升级" in item["attributes"] else min(item["price"], 1200) / 35
+        elif theme == "future":
+            score += len(item["goals"]) * 12 + item["novelty"] * 5
+        for condition in refinements:
+            if condition["name"] == "priceOrder":
+                price_signal = min(item["price"], 4000) / 100
+                score += -price_signal if condition["value"] == "lower" else price_signal
+                continue
+            matches = product_matches(item, condition)
+            if condition["strength"] == "hard":
+                score += 30 if matches else -120
+            elif condition["operator"] == "neq":
+                score += 8 if matches else -40
+            else:
+                score += 32 if matches else -2
+        scored.append((score, item))
+
+    scored.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
+    exact = [item["id"] for _, item in scored] if theme in ("inspiration", "wow") else diversify_products(scored)
+    return {"exact": exact, "near": []}
+
+
+def rank_results(
+    scene: str,
+    conditions: list[dict[str, Any]],
+    intent: dict[str, Any] | None = None,
+) -> dict[str, list[str]]:
+    mode = intent.get("mode") if intent else None
+    source_condition = next(
+        (item for item in reversed(conditions) if item.get("sourceMode") in ("scenario", "explore")),
+        None,
+    )
+    if mode in (None, "unknown") and source_condition:
+        mode = source_condition["sourceMode"]
+    if mode == "product" and source_condition:
+        mode = source_condition["sourceMode"]
+    if mode == "scenario":
+        scenario_key = intent.get("scenario", {}).get("key") if intent else None
+        if scenario_key is None and source_condition:
+            scenario_key = source_condition.get("sourceKey")
+        return rank_scenario_results(scene, conditions, scenario_key)
+    if mode == "explore":
+        theme = intent.get("exploreTheme") if intent else None
+        if theme is None and source_condition:
+            theme = source_condition.get("sourceKey")
+        return rank_explore_results(scene, conditions, theme)
+    return rank_product_results(scene, conditions)
+
+
+def feedback_for(intent: dict[str, Any]) -> str:
+    if intent["type"] == "unknown":
+        return "我还没听懂。可以说具体商品、要完成的场景，或想探索的新灵感。"
+    labels = [item["label"] for item in intent.get("slots", [])]
+    if "减少跑鞋" in labels and "增加家居" in labels:
+        return "已为你减少跑鞋，增加收纳与家居好物"
+    if intent["mode"] == "scenario":
+        scenario = intent["scenario"]
+        return f"已将“{scenario['label']}”拆成：{'、'.join(scenario['targets'])}"
+    if intent["mode"] == "explore":
+        return f"已进入{intent['route']['label']}，增加新鲜度、趋势性和跨品类灵感"
+    if labels:
+        return f"已应用：{' · '.join(labels)}"
+    return "已理解你的即时意图"
+
+
+def bootstrap_payload() -> dict[str, Any]:
+    return {
+        "products": PRODUCTS,
+        "initialRecommendations": INITIAL_RECOMMENDATIONS,
+        "initialSearchResults": INITIAL_SEARCH_RESULTS,
+        "searchQuery": "男生白色运动鞋",
+        "examples": {
+            "recommend": [
+                "给我推荐一些好看的裙子",
+                "想要韩式风格",
+                "想要颜色浅一点",
+                "给我推荐点健身好物",
+                "有没有让我眼前一亮的好物",
+                "我的出租屋还能更舒服吗？",
+                "我要去看演唱会有什么推荐好物",
+                "买什么东西可以提升幸福感",
+                "有什么好用的防晒霜",
+            ],
+            "search": ["要能增高的，500元以内", "不是女款，是男款"],
+        },
+    }
+
+
+class DemoHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        print(f"[demo] {self.address_string()} - {format % args}")
+
+    def send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def read_json(self) -> dict[str, Any]:
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0:
+            return {}
+        return json.loads(self.rfile.read(length).decode("utf-8"))
+
+    def do_GET(self) -> None:
+        if self.path == "/api/demo/bootstrap":
+            self.send_json(bootstrap_payload())
+            return
+        if self.path.startswith("/api/"):
+            self.send_json({"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
+            return
+        if self.path in ("/", "/recommend", "/search"):
+            self.path = "/index.html"
+        super().do_GET()
+
+    def do_POST(self) -> None:
+        try:
+            payload = self.read_json()
+            if self.path == "/api/intent/apply":
+                scene = payload.get("scene", "recommend")
+                if scene not in ("recommend", "search"):
+                    raise ValueError("scene 必须是 recommend 或 search")
+                transcript = str(payload.get("transcript", "")).strip()
+                if not transcript:
+                    raise ValueError("请输入或说出你的想法")
+                existing = payload.get("sessionIntent", [])
+                if not isinstance(existing, list):
+                    raise ValueError("sessionIntent 必须是数组")
+                intent = parse_intent(transcript)
+                conditions = merge_conditions(existing, intent)
+                ranked = rank_results(scene, conditions, intent)
+                engine = {
+                    "mode": intent["mode"],
+                    "modeLabel": intent["modeLabel"],
+                    "confidence": intent["confidence"],
+                    "evidence": intent["evidence"],
+                    "route": intent["route"],
+                }
+                self.send_json({
+                    "intent": intent,
+                    "engine": engine,
+                    "sessionIntent": conditions,
+                    "resultIds": ranked["exact"],
+                    "nearMatchIds": ranked["near"],
+                    "feedback": feedback_for(intent),
+                })
+                return
+            if self.path == "/api/intent/reset":
+                self.send_json({
+                    "sessionIntent": [],
+                    "resultIds": INITIAL_RECOMMENDATIONS,
+                    "searchResultIds": INITIAL_SEARCH_RESULTS,
+                    "feedback": "已恢复初始推荐",
+                })
+                return
+            self.send_json({"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
+        except (ValueError, json.JSONDecodeError) as exc:
+            self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+
+def run() -> None:
+    server = ThreadingHTTPServer(("127.0.0.1", PORT), DemoHandler)
+    print(f"你说了算 Demo 已启动：http://127.0.0.1:{PORT}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    run()

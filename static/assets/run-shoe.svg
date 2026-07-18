@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 300">
+  <defs><linearGradient id="b" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e8edf1"/><stop offset="1" stop-color="#cdd6de"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="10" flood-opacity=".18"/></filter></defs>
+  <rect width="360" height="300" rx="24" fill="url(#b)"/><circle cx="285" cy="45" r="70" fill="#fff" opacity=".35"/>
+  <g filter="url(#s)" transform="rotate(-8 180 160)"><path d="M55 175c38-2 70-35 92-76 12 13 33 28 60 41 28 13 61 16 94 29 16 6 23 22 12 35-8 9-30 14-56 14H78c-25 0-40-12-36-27 2-8 6-13 13-16z" fill="#fafafa"/><path d="M88 155c28-13 46-37 60-57 13 14 26 24 43 33l-30 43z" fill="#ff5b27"/><path d="M40 198h278c-2 20-21 30-57 30H78c-25 0-39-9-38-30z" fill="#222b31"/><path d="M167 125l-36 39m61-26-35 42m63-30-30 35" stroke="#b7bec4" stroke-width="7" stroke-linecap="round"/></g>
+  <text x="20" y="34" font-family="sans-serif" font-size="13" font-weight="700" fill="#65717a">LIGHTWEIGHT / RUN</text>
+</svg>

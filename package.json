@@ -1,0 +1,7 @@
+{
+  "name": "taobao-voice-intent-demo",
+  "private": true,
+  "scripts": {
+    "build": "python3 scripts/build_sites.py"
+  }
+}

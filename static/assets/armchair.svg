@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 300">
+  <defs><linearGradient id="b" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eee7dc"/><stop offset="1" stop-color="#d8ccb9"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="10" flood-opacity=".18"/></filter></defs>
+  <rect width="360" height="300" rx="24" fill="url(#b)"/><path d="M0 250h360v50H0z" fill="#c9bda9" opacity=".7"/>
+  <g filter="url(#s)"><rect x="83" y="73" width="194" height="144" rx="64" fill="#f8f2e8"/><rect x="64" y="145" width="232" height="86" rx="34" fill="#e6d4bd"/><rect x="92" y="132" width="176" height="83" rx="30" fill="#fffaf1"/><path d="M99 214l-16 49m178-49 16 49" stroke="#9b6844" stroke-width="12" stroke-linecap="round"/><rect x="162" y="104" width="68" height="55" rx="20" fill="#d7b798" transform="rotate(8 196 132)"/></g>
+  <text x="20" y="34" font-family="sans-serif" font-size="13" font-weight="700" fill="#826f5d">SOFT / LIVING</text>
+</svg>

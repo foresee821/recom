@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 500">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff9f5"/>
+      <stop offset="1" stop-color="#f2ddd0"/>
+    </linearGradient>
+    <linearGradient id="cup" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffb277"/>
+      <stop offset=".48" stop-color="#ff7048"/>
+      <stop offset="1" stop-color="#ef4b37"/>
+    </linearGradient>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="13"/>
+    </filter>
+  </defs>
+  <rect width="420" height="500" fill="url(#bg)"/>
+  <circle cx="76" cy="78" r="44" fill="#fff" opacity=".42"/>
+  <circle cx="362" cy="130" r="68" fill="#fff" opacity=".28"/>
+  <ellipse cx="214" cy="419" rx="115" ry="27" fill="#9d5f45" opacity=".2" filter="url(#shadow)"/>
+  <path d="M251 93h17l27 109" fill="none" stroke="#e55338" stroke-width="13" stroke-linecap="round"/>
+  <rect x="126" y="94" width="168" height="42" rx="20" fill="#f8e9df"/>
+  <rect x="143" y="117" width="134" height="286" rx="54" fill="url(#cup)"/>
+  <path d="M156 149c28-14 75-20 108-2" fill="none" stroke="#ffd8bd" stroke-width="8" stroke-linecap="round" opacity=".7"/>
+  <rect x="158" y="183" width="104" height="122" rx="42" fill="#fff" opacity=".12"/>
+  <circle cx="190" cy="229" r="8" fill="#fff"/>
+  <circle cx="231" cy="229" r="8" fill="#fff"/>
+  <path d="M191 260c13 12 27 12 40 0" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+  <text x="210" y="454" text-anchor="middle" fill="#7b4938" font-family="Arial,sans-serif" font-size="20" font-weight="700">DAILY CUP</text>
+</svg>

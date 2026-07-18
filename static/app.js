@@ -1,0 +1,679 @@
+const els = {
+  screen: document.querySelector("#mobile-screen"),
+  scroller: document.querySelector("#content-scroller"),
+  recommendView: document.querySelector("#recommend-view"),
+  searchView: document.querySelector("#search-view"),
+  recommendGrid: document.querySelector("#recommend-grid"),
+  searchGrid: document.querySelector("#search-grid"),
+  nearGrid: document.querySelector("#near-grid"),
+  nearSection: document.querySelector("#near-section"),
+  exactHeading: document.querySelector("#exact-heading"),
+  exactCount: document.querySelector("#exact-count"),
+  searchLabel: document.querySelector("#search-label"),
+  searchTip: document.querySelector("#search-tip"),
+  subtitle: document.querySelector("#recommend-subtitle"),
+  intentStrip: document.querySelector("#intent-strip"),
+  intentChips: document.querySelector("#intent-chips"),
+  onboarding: document.querySelector("#onboarding"),
+  voiceSheet: document.querySelector("#voice-sheet"),
+  voiceTitle: document.querySelector("#voice-title"),
+  voiceHint: document.querySelector("#voice-hint"),
+  voiceKeywordOrbit: document.querySelector("#voice-keyword-orbit"),
+  clearAllIntents: document.querySelector("#clear-all-intents"),
+  voiceClose: document.querySelector("#voice-close"),
+  holdButton: document.querySelector("#hold-button"),
+  wave: document.querySelector("#wave"),
+  transcript: document.querySelector("#transcript"),
+  fallbackForm: document.querySelector("#fallback-form"),
+  fallbackInput: document.querySelector("#fallback-input"),
+  examples: document.querySelector("#examples"),
+  toast: document.querySelector("#toast"),
+};
+
+const state = {
+  bootstrap: null,
+  products: new Map(),
+  scene: "recommend",
+  sessionIntent: [],
+  recommendationIds: [],
+  searchIds: [],
+  nearIds: [],
+  previous: null,
+  recognition: null,
+  listening: false,
+  recognitionPending: false,
+  recognitionFailed: false,
+  submitOnEnd: false,
+  stopAfterStart: false,
+  demoVoiceMode: false,
+  demoVoiceTimer: null,
+  transcript: "",
+};
+
+const productSpritePanels = {
+  "fresh-01": "sprite-p1",
+  "home-02": "sprite-p2",
+  "fresh-02": "sprite-p3",
+  "fresh-03": "sprite-p4",
+  "home-01": "sprite-p5",
+  "home-06": "sprite-p5",
+  "home-08": "sprite-p5",
+  "run-01": "sprite-p6",
+  "run-02": "sprite-p6",
+  "run-03": "sprite-p6",
+  "run-04": "sprite-p6",
+  "shoe-01": "sprite-p6",
+  "shoe-02": "sprite-p6",
+  "shoe-03": "sprite-p6",
+  "shoe-04": "sprite-p6",
+  "shoe-05": "sprite-p6",
+  "shoe-06": "sprite-p6",
+  "shoe-07": "sprite-p6",
+  "shoe-08": "sprite-p6",
+  "fresh-04": "sprite-p6",
+  "beauty-01": "catalog-p1",
+  "beauty-02": "catalog-p1",
+  "earbuds-01": "catalog-p2",
+  "earbuds-02": "catalog-p2",
+  "phone-01": "catalog-p3",
+  "phone-02": "catalog-p3",
+  "coffee-01": "catalog-p4",
+  "coffee-02": "catalog-p4",
+  "snack-01": "catalog-p5",
+  "snack-02": "catalog-p5",
+  "pet-01": "catalog-p6",
+  "pet-02": "catalog-p6",
+  "baby-01": "catalog-p7",
+  "baby-02": "catalog-p7",
+  "outdoor-01": "catalog-p8",
+  "outdoor-02": "catalog-p8",
+  "bag-01": "catalog-p9",
+  "bag-02": "catalog-p9",
+  "office-01": "catalog-p10",
+  "office-02": "catalog-p10",
+  "car-01": "catalog-p11",
+  "car-02": "catalog-p11",
+  "skincare-01": "catalog-p12",
+  "skincare-02": "catalog-p12",
+  "dress-01": "catalog-p13",
+  "dress-02": "catalog-p13",
+  "fruit-01": "catalog-p14",
+  "fruit-02": "catalog-p14",
+  "book-01": "catalog-p15",
+  "book-02": "catalog-p15",
+  "perfume-01": "catalog-p16",
+  "perfume-02": "catalog-p16",
+};
+
+const caseSpriteSources = {
+  rental: "/assets/case-rental-products-v1.png",
+  concert: "/assets/case-concert-products-v1.png",
+  happy: "/assets/case-happiness-products-v1.png",
+  sunscreen: "/assets/case-sunscreen-products-v1.png",
+  dresscase: "/assets/case-korean-dresses-v1.png",
+  fitcase: "/assets/case-fitness-products-v1.png",
+  wow: "/assets/case-eye-catching-products-v1.png",
+};
+
+function caseSpriteFor(productId) {
+  const match = /^(rental|concert|happy|sunscreen|dresscase|fitcase|wow)-(\d{2})$/.exec(productId);
+  if (!match) return null;
+  const index = Number(match[2]) - 1;
+  const column = index % 4;
+  const row = Math.floor(index / 4);
+  return {
+    image: caseSpriteSources[match[1]],
+    position: `${column * 33.333}% ${row * 50}%`,
+  };
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "请求失败");
+  return payload;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function productReasons(item) {
+  const matches = state.sessionIntent.filter((condition) => {
+    if (condition.operator === "neq") return false;
+    if (condition.name === "price") return item.price <= Number(condition.value);
+    if (condition.name === "category") {
+      return item.category === condition.value || item.attributes.includes(condition.value) ||
+        (condition.value === "家居" && item.category === "收纳");
+    }
+    if (condition.name === "style") return item.styles?.includes(condition.value);
+    if (condition.name === "audience") return item.audiences?.includes(condition.value);
+    if (condition.name === "brand") return item.brand === condition.value;
+    return item.attributes.includes(condition.value);
+  });
+  return matches.slice(0, 2).map((condition) => condition.label);
+}
+
+function productCard(item, index, isNear = false) {
+  const reasons = productReasons(item);
+  const tags = reasons.length ? reasons : item.attributes.slice(0, 1);
+  const spritePanel = productSpritePanels[item.id];
+  const caseSprite = caseSpriteFor(item.id);
+  const image = caseSprite
+    ? `<div class="product-image product-photo case-product" style="--case-image:url('${caseSprite.image}');--case-position:${caseSprite.position}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
+    : spritePanel
+    ? `<div class="product-image product-photo ${spritePanel}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
+    : `<img class="product-image" src="${item.image}" alt="${escapeHtml(item.title)}" />`;
+  return `
+    <article class="product-card is-new" style="--delay:${Math.min(index * 55, 330)}ms">
+      ${image}
+      <div class="product-body">
+        <p class="product-title">${isNear ? '<span style="color:#999">近似 · </span>' : ""}${escapeHtml(item.title)}</p>
+        <div class="product-reasons">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
+        <span class="product-price">¥<strong>${item.price}</strong></span>
+        <span class="product-sales">${escapeHtml(item.sales)}</span>
+      </div>
+    </article>`;
+}
+
+function renderGrid(container, ids, isNear = false) {
+  const uniqueIds = [...new Set(ids)].filter((id) => state.products.has(id)).slice(0, isNear ? 6 : 14);
+  container.innerHTML = uniqueIds.map((id, index) => productCard(state.products.get(id), index, isNear)).join("");
+}
+
+function renderProducts() {
+  renderGrid(els.recommendGrid, state.recommendationIds);
+  renderGrid(els.searchGrid, state.searchIds);
+  renderGrid(els.nearGrid, state.nearIds, true);
+  const refinedSearch = state.scene === "search" && state.sessionIntent.length > 0;
+  els.nearSection.hidden = !refinedSearch || state.nearIds.length === 0;
+  els.exactHeading.hidden = !refinedSearch;
+  els.exactCount.textContent = `${state.searchIds.length} 件严格匹配`;
+  els.searchTip.hidden = refinedSearch;
+}
+
+function renderIntents() {
+  els.intentStrip.hidden = true;
+  els.intentChips.replaceChildren();
+  els.screen.classList.remove("has-intents");
+}
+
+function scrollProductsToTop() {
+  requestAnimationFrame(() => {
+    if (typeof els.scroller.scrollTo === "function") {
+      els.scroller.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    els.scroller.scrollTop = 0;
+  });
+}
+
+function renderVoiceKeywords() {
+  const keywords = state.sessionIntent
+    .map((condition, index) => ({ condition, index }))
+    .filter(
+      (item, position, all) =>
+        all.findIndex((candidate) => candidate.condition.label === item.condition.label) === position,
+    )
+    .slice(0, 6);
+
+  els.voiceKeywordOrbit.innerHTML = keywords
+    .map(
+      ({ condition, index }, position) => `
+        <span class="voice-keyword-bubble bubble-pos-${position}">
+          <span>${escapeHtml(condition.label)}</span>
+          <button type="button" data-remove-keyword="${index}" aria-label="删除关键词 ${escapeHtml(condition.label)}">×</button>
+        </span>
+      `,
+    )
+    .join("");
+  els.clearAllIntents.hidden = state.sessionIntent.length === 0;
+
+  els.voiceKeywordOrbit.querySelectorAll("[data-remove-keyword]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const index = Number(button.dataset.removeKeyword);
+      const removed = state.sessionIntent[index];
+      if (!removed) return;
+
+      const beforeDelete = snapshot();
+      state.previous = beforeDelete;
+      state.sessionIntent.splice(index, 1);
+      try {
+        await rerankCurrentConditions();
+      } catch (error) {
+        Object.assign(state, {
+          sessionIntent: beforeDelete.sessionIntent,
+          recommendationIds: beforeDelete.recommendationIds,
+          searchIds: beforeDelete.searchIds,
+          nearIds: beforeDelete.nearIds,
+        });
+        state.previous = null;
+        renderProducts();
+        renderVoiceKeywords();
+        showToast(`关键词删除失败：${error.message}`);
+        return;
+      }
+      renderVoiceKeywords();
+      scrollProductsToTop();
+      els.voiceTitle.textContent = state.sessionIntent.length
+        ? "关键词已更新，推荐已刷新"
+        : "已清空关键词，恢复默认推荐";
+      els.voiceHint.textContent = "可以说具体商品、生活场景，或探索灵感";
+      const remainingLabels = state.sessionIntent.map((condition) => condition.label);
+      els.transcript.textContent = remainingLabels.length
+        ? `当前关键词：${remainingLabels.join(" · ")}`
+        : "当前没有关键词";
+    });
+  });
+}
+
+async function clearAllIntents() {
+  const result = await api("/api/intent/reset", { method: "POST", body: "{}" });
+  state.sessionIntent = [];
+  state.recommendationIds = result.resultIds;
+  state.searchIds = result.searchResultIds;
+  state.nearIds = [];
+  state.previous = null;
+  renderIntents();
+  renderProducts();
+  renderVoiceKeywords();
+  scrollProductsToTop();
+  els.voiceTitle.textContent = "已清除全部意图";
+  els.voiceHint.textContent = "可以说具体商品、生活场景，或探索灵感";
+  els.transcript.textContent = "推荐已恢复，可以重新说出你的想法";
+  els.fallbackInput.value = "";
+}
+
+function snapshot() {
+  return {
+    sessionIntent: structuredClone(state.sessionIntent),
+    recommendationIds: [...state.recommendationIds],
+    searchIds: [...state.searchIds],
+    nearIds: [...state.nearIds],
+    scrollTop: els.scroller.scrollTop,
+  };
+}
+
+function switchScene(scene) {
+  state.scene = scene;
+  els.recommendView.hidden = scene !== "recommend";
+  els.searchView.hidden = scene !== "search";
+  els.searchLabel.textContent = scene === "search" ? state.bootstrap.searchQuery : "绝美白色短袖 t 恤";
+  document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === scene));
+  els.scroller.scrollTop = 0;
+  renderExamples();
+}
+
+function showToast(message) {
+  els.toast.textContent = message;
+  els.toast.hidden = false;
+  setTimeout(() => { els.toast.hidden = true; }, 2600);
+}
+
+function renderExamples() {
+  if (!state.bootstrap) return;
+  const examples = state.bootstrap.examples[state.scene];
+  els.examples.innerHTML = examples.map((example) => `<button type="button" data-example="${escapeHtml(example)}">“${escapeHtml(example)}”</button>`).join("");
+  document.querySelectorAll("[data-example]").forEach((button) => {
+    button.addEventListener("click", () => {
+      els.transcript.textContent = button.dataset.example;
+      state.transcript = button.dataset.example;
+      setTimeout(() => applyTranscript(button.dataset.example), 500);
+    });
+  });
+}
+
+function openVoice(autoListen = false) {
+  els.onboarding.hidden = true;
+  els.voiceSheet.hidden = false;
+  els.transcript.textContent = "等待你说话…";
+  els.fallbackInput.value = "";
+  state.transcript = "";
+  els.voiceTitle.textContent = state.sessionIntent.length > 0
+    ? "继续说，推荐会再次调整"
+    : "说出你此刻想看的";
+  els.voiceHint.textContent = "可以说具体商品、生活场景，或探索灵感";
+  setListeningUI(false);
+  renderExamples();
+  renderVoiceKeywords();
+  if (autoListen) startListening();
+}
+
+function closeVoice() {
+  clearTimeout(state.demoVoiceTimer);
+  stopListening(false);
+  els.voiceSheet.hidden = true;
+}
+
+function createRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return null;
+  const recognition = new SpeechRecognition();
+  recognition.lang = "zh-CN";
+  recognition.interimResults = true;
+  recognition.continuous = false;
+  recognition.onresult = (event) => {
+    let value = "";
+    for (let i = event.resultIndex; i < event.results.length; i += 1) value += event.results[i][0].transcript;
+    state.transcript = value.trim();
+    els.transcript.textContent = state.transcript || "我在听…";
+  };
+  recognition.onerror = (event) => {
+    state.recognitionFailed = true;
+    state.submitOnEnd = false;
+    state.listening = false;
+    setListeningUI(false);
+    const messages = {
+      "not-allowed": "麦克风权限未开放",
+      "service-not-allowed": "当前浏览器限制了语音服务",
+      network: "语音识别服务暂时无法连接",
+      "audio-capture": "没有检测到可用麦克风",
+      "no-speech": "没有听清，请再试一次",
+      aborted: "语音识别已取消",
+    };
+    const message = messages[event.error] || `语音识别失败（${event.error || "未知错误"}）`;
+    if (["not-allowed", "service-not-allowed", "network", "audio-capture"].includes(event.error)) {
+      enableDemoVoice(message);
+    } else {
+      els.transcript.textContent = message;
+    }
+  };
+  recognition.onend = () => {
+    const shouldSubmit = state.submitOnEnd && state.transcript && !state.recognitionFailed;
+    state.listening = false;
+    state.recognitionPending = false;
+    state.submitOnEnd = false;
+    setListeningUI(false);
+    if (shouldSubmit) {
+      const value = state.transcript;
+      setTimeout(() => applyTranscript(value), 500);
+    }
+  };
+  return recognition;
+}
+
+function setListeningUI(listening) {
+  els.wave.classList.toggle("listening", listening);
+  els.holdButton.classList.toggle("is-listening", listening);
+  els.holdButton.classList.toggle("is-demo", state.demoVoiceMode);
+  const strong = els.holdButton.querySelector("strong");
+  if (state.demoVoiceMode) {
+    strong.textContent = listening ? "演示聆听中" : "演示识别";
+  } else if (listening) {
+    strong.textContent = state.submitOnEnd ? "再点一次结束" : "正在聆听";
+  } else {
+    strong.textContent = "按住或轻点";
+  }
+}
+
+function setMicrophonePendingUI() {
+  els.wave.classList.add("listening");
+  els.holdButton.classList.add("is-listening");
+  els.holdButton.querySelector("strong").textContent = "等待麦克风";
+}
+
+function enableDemoVoice(reason) {
+  state.demoVoiceMode = true;
+  state.listening = false;
+  state.recognitionPending = false;
+  state.stopAfterStart = false;
+  setListeningUI(false);
+  els.transcript.textContent = `${reason}。可点击“演示识别”走完整流程。`;
+}
+
+function runDemoVoice() {
+  if (state.listening) return;
+  state.listening = true;
+  setListeningUI(true);
+  els.transcript.textContent = "演示识别中…";
+  const phrase = state.bootstrap.examples[state.scene][0];
+  clearTimeout(state.demoVoiceTimer);
+  state.demoVoiceTimer = setTimeout(() => {
+    state.listening = false;
+    state.transcript = phrase;
+    setListeningUI(false);
+    els.transcript.textContent = `演示转写：“${phrase}”`;
+    state.demoVoiceTimer = setTimeout(() => applyTranscript(phrase), 650);
+  }, 900);
+}
+
+async function requestMicrophoneAccess() {
+  if (!navigator.mediaDevices?.getUserMedia) return;
+  const microphoneRequest = navigator.mediaDevices.getUserMedia({ audio: true });
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error("等待麦克风授权超时");
+      error.name = "TimeoutError";
+      reject(error);
+    }, 8000);
+  });
+  try {
+    const stream = await Promise.race([microphoneRequest, timeout]);
+    stream.getTracks().forEach((track) => track.stop());
+  } catch (error) {
+    if (error?.name === "TimeoutError") {
+      microphoneRequest.then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function startListening() {
+  if (state.demoVoiceMode) {
+    runDemoVoice();
+    return;
+  }
+  if (state.listening || state.recognitionPending) return;
+  state.recognition ||= createRecognition();
+  if (!state.recognition) {
+    enableDemoVoice("当前浏览器不支持网页语音识别");
+    return;
+  }
+  state.recognitionPending = true;
+  state.recognitionFailed = false;
+  setMicrophonePendingUI();
+  els.transcript.textContent = "正在连接麦克风…";
+  try {
+    await requestMicrophoneAccess();
+    state.transcript = "";
+    state.listening = true;
+    state.recognitionPending = false;
+    setListeningUI(true);
+    els.transcript.textContent = "我在听…";
+    state.recognition.start();
+    if (state.stopAfterStart) {
+      state.stopAfterStart = false;
+      stopListening(true);
+    }
+  } catch (error) {
+    state.listening = false;
+    state.recognitionPending = false;
+    setListeningUI(false);
+    const denied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
+    const timedOut = error?.name === "TimeoutError";
+    enableDemoVoice(timedOut ? "内置浏览器未开放麦克风权限" : denied ? "麦克风权限未开放" : "无法启动麦克风");
+  }
+}
+
+function stopListening(shouldApply = true) {
+  if (state.demoVoiceMode) return;
+  state.submitOnEnd = shouldApply;
+  if (state.recognitionPending) {
+    state.stopAfterStart = true;
+    return;
+  }
+  if (state.recognition && state.listening) {
+    state.recognition.stop();
+    return;
+  }
+  if (shouldApply && state.transcript && !state.recognitionFailed) {
+    const value = state.transcript;
+    setTimeout(() => applyTranscript(value), 500);
+  }
+  state.listening = false;
+  setListeningUI(false);
+}
+
+async function applyTranscript(transcript) {
+  state.previous = snapshot();
+  els.transcript.textContent = `“${transcript}”`;
+  try {
+    const result = await api("/api/intent/apply", {
+      method: "POST",
+      body: JSON.stringify({
+        scene: state.scene,
+        transcript,
+        baseQuery: state.bootstrap.searchQuery,
+        sessionIntent: state.sessionIntent,
+      }),
+    });
+    if (result.intent.type === "unknown") {
+      els.transcript.textContent = result.feedback;
+      return;
+    }
+    state.sessionIntent = result.sessionIntent;
+    if (state.scene === "recommend") {
+      state.recommendationIds = result.resultIds;
+      els.subtitle.textContent = "已融合你刚刚表达的即时意图";
+    } else {
+      state.searchIds = result.resultIds;
+      state.nearIds = result.resultIds.length < 3 ? result.nearMatchIds : [];
+    }
+    closeVoice();
+    renderIntents();
+    renderProducts();
+    renderVoiceKeywords();
+    scrollProductsToTop();
+    const keywordLabels = result.sessionIntent.map((condition) => condition.label);
+    els.voiceTitle.textContent = "已理解，推荐已刷新";
+    els.voiceHint.textContent = "可以说具体商品、生活场景，或探索灵感";
+    els.transcript.textContent = keywordLabels.length
+      ? `已提取关键词：${keywordLabels.join(" · ")}`
+      : `“${transcript}”`;
+  } catch (error) {
+    els.transcript.textContent = error.message;
+    showToast(error.message);
+  }
+}
+
+async function rerankCurrentConditions() {
+  if (state.sessionIntent.length === 0) {
+    state.recommendationIds = [...state.bootstrap.initialRecommendations];
+    state.searchIds = [...state.bootstrap.initialSearchResults];
+    state.nearIds = [];
+    els.subtitle.textContent = "根据你的长期偏好推荐";
+    renderProducts();
+    return;
+  }
+  const result = await api("/api/intent/apply", {
+    method: "POST",
+    body: JSON.stringify({ scene: state.scene, transcript: "保持当前条件", sessionIntent: state.sessionIntent }),
+  });
+  if (state.scene === "recommend") state.recommendationIds = result.resultIds;
+  else {
+    state.searchIds = result.resultIds;
+    state.nearIds = result.resultIds.length < 3 ? result.nearMatchIds : [];
+  }
+  renderProducts();
+}
+
+function bindLongPress() {
+  let timer = null;
+  let triggered = false;
+  let startX = 0;
+  let startY = 0;
+  els.scroller.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("button, input, .product-card")) return;
+    triggered = false;
+    startX = event.clientX;
+    startY = event.clientY;
+    timer = setTimeout(() => {
+      triggered = true;
+      openVoice(true);
+      if (navigator.vibrate) navigator.vibrate(25);
+    }, 350);
+  });
+  els.scroller.addEventListener("pointermove", (event) => {
+    if (Math.hypot(event.clientX - startX, event.clientY - startY) > 12) clearTimeout(timer);
+  });
+  window.addEventListener("pointerup", () => {
+    clearTimeout(timer);
+    if (triggered) stopListening(true);
+    triggered = false;
+  });
+  els.scroller.addEventListener("pointercancel", () => clearTimeout(timer));
+}
+
+function bindEvents() {
+  document.querySelectorAll("[data-open-voice]").forEach((button) => button.addEventListener("click", () => openVoice(false)));
+  document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => switchScene(button.dataset.tab)));
+  document.querySelector("#home-logo").addEventListener("click", () => switchScene("recommend"));
+  document.querySelector("#back-to-home").addEventListener("click", () => switchScene("recommend"));
+  document.querySelector("#dismiss-onboarding").addEventListener("click", () => { els.onboarding.hidden = true; });
+  els.clearAllIntents.addEventListener("click", () => {
+    clearAllIntents().catch((error) => showToast(`清除失败：${error.message}`));
+  });
+  els.voiceClose.addEventListener("click", closeVoice);
+  els.voiceSheet.querySelector(".voice-backdrop").addEventListener("click", closeVoice);
+  let voicePressStartedAt = 0;
+  let listeningBeforePress = false;
+  els.holdButton.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    voicePressStartedAt = Date.now();
+    listeningBeforePress = state.listening || state.recognitionPending;
+    if (!listeningBeforePress && !state.demoVoiceMode) startListening();
+  });
+  els.holdButton.addEventListener("pointerup", (event) => {
+    event.preventDefault();
+    if (state.demoVoiceMode) {
+      runDemoVoice();
+      return;
+    }
+    if (listeningBeforePress || Date.now() - voicePressStartedAt >= 650) {
+      stopListening(true);
+      return;
+    }
+    state.submitOnEnd = true;
+    if (state.listening) setListeningUI(true);
+    if (state.recognitionPending) els.transcript.textContent = "麦克风就绪后开始聆听…";
+  });
+  els.holdButton.addEventListener("pointercancel", () => stopListening(false));
+  els.fallbackForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const value = els.fallbackInput.value.trim();
+    if (!value) return;
+    state.transcript = value;
+    els.transcript.textContent = `“${value}”`;
+    setTimeout(() => applyTranscript(value), 500);
+  });
+  bindLongPress();
+}
+
+async function init() {
+  try {
+    state.bootstrap = await api("/api/demo/bootstrap");
+    state.products = new Map(state.bootstrap.products.map((item) => [item.id, item]));
+    state.recommendationIds = [...state.bootstrap.initialRecommendations];
+    state.searchIds = [...state.bootstrap.initialSearchResults];
+    renderProducts();
+    renderIntents();
+    renderExamples();
+    bindEvents();
+  } catch (error) {
+    showToast(`Demo 加载失败：${error.message}`);
+  }
+}
+
+init();

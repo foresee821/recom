@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 300">
+  <defs><radialGradient id="b"><stop stop-color="#fff3bd"/><stop offset="1" stop-color="#37313e"/></radialGradient><filter id="g"><feGaussianBlur stdDeviation="11"/></filter></defs>
+  <rect width="360" height="300" rx="24" fill="#312c38"/><circle cx="181" cy="124" r="120" fill="url(#b)" opacity=".65" filter="url(#g)"/>
+  <path d="M135 135c9-72 81-72 91 0z" fill="#f5dfad"/><rect x="176" y="133" width="10" height="102" rx="5" fill="#c39862"/><ellipse cx="181" cy="239" rx="56" ry="15" fill="#9a6b45"/><ellipse cx="181" cy="132" rx="49" ry="11" fill="#ffe6ad"/>
+  <text x="20" y="34" font-family="sans-serif" font-size="13" font-weight="700" fill="#f2dfbe">WARM / LIGHT</text>
+</svg>
