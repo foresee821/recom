@@ -48,8 +48,6 @@ const state = {
   stopAfterStart: false,
   cancelOnStart: false,
   ignoreNextAbort: false,
-  demoVoiceMode: false,
-  demoVoiceTimer: null,
   transcript: "",
 };
 
@@ -354,7 +352,6 @@ function openVoice(autoListen = false) {
 }
 
 function closeVoice() {
-  clearTimeout(state.demoVoiceTimer);
   stopListening(false);
   els.voiceSheet.hidden = true;
 }
@@ -389,7 +386,7 @@ function createRecognition() {
   };
   recognition.onresult = (event) => {
     let value = "";
-    for (let i = event.resultIndex; i < event.results.length; i += 1) value += event.results[i][0].transcript;
+    for (let i = 0; i < event.results.length; i += 1) value += event.results[i][0].transcript;
     state.transcript = value.trim();
     els.transcript.textContent = state.transcript || "我在听…";
   };
@@ -419,7 +416,7 @@ function createRecognition() {
     };
     const message = messages[event.error] || `语音识别失败（${event.error || "未知错误"}）`;
     if (["not-allowed", "service-not-allowed", "network", "audio-capture"].includes(event.error)) {
-      enableDemoVoice(message);
+      showSpeechUnavailable(message);
     } else {
       els.transcript.textContent = message;
     }
@@ -442,11 +439,8 @@ function createRecognition() {
 function setListeningUI(listening) {
   els.wave.classList.toggle("listening", listening);
   els.holdButton.classList.toggle("is-listening", listening);
-  els.holdButton.classList.toggle("is-demo", state.demoVoiceMode);
   const strong = els.holdButton.querySelector("strong");
-  if (state.demoVoiceMode) {
-    strong.textContent = listening ? "演示聆听中" : "演示识别";
-  } else if (listening) {
+  if (listening) {
     strong.textContent = state.submitOnEnd ? "再点一次结束" : "正在聆听";
   } else {
     strong.textContent = "按住或轻点";
@@ -459,8 +453,7 @@ function setMicrophonePendingUI() {
   els.holdButton.querySelector("strong").textContent = "等待麦克风";
 }
 
-function enableDemoVoice(reason) {
-  state.demoVoiceMode = true;
+function showSpeechUnavailable(reason) {
   state.listening = false;
   state.recognitionPending = false;
   state.recognitionStarted = false;
@@ -468,34 +461,14 @@ function enableDemoVoice(reason) {
   state.cancelOnStart = false;
   state.recognition = null;
   setListeningUI(false);
-  els.transcript.textContent = `${reason}。可点击“演示识别”走完整流程。`;
-}
-
-function runDemoVoice() {
-  if (state.listening) return;
-  state.listening = true;
-  setListeningUI(true);
-  els.transcript.textContent = "演示识别中…";
-  const phrase = state.bootstrap.examples[state.scene][0];
-  clearTimeout(state.demoVoiceTimer);
-  state.demoVoiceTimer = setTimeout(() => {
-    state.listening = false;
-    state.transcript = phrase;
-    setListeningUI(false);
-    els.transcript.textContent = `演示转写：“${phrase}”`;
-    state.demoVoiceTimer = setTimeout(() => applyTranscript(phrase), 650);
-  }, 900);
+  els.transcript.textContent = `${reason}。请使用 Chrome、Edge 或 Safari，并允许麦克风权限；也可以改用下方文字输入。`;
 }
 
 function startListening() {
-  if (state.demoVoiceMode) {
-    runDemoVoice();
-    return;
-  }
   if (state.listening || state.recognitionPending) return;
   state.recognition ||= createRecognition();
   if (!state.recognition) {
-    enableDemoVoice("当前浏览器不支持网页语音识别");
+    showSpeechUnavailable("当前浏览器不支持网页语音识别");
     return;
   }
   state.recognitionPending = true;
@@ -515,12 +488,11 @@ function startListening() {
     state.recognition = null;
     setListeningUI(false);
     const denied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
-    enableDemoVoice(denied ? "麦克风权限未开放" : "无法启动麦克风");
+    showSpeechUnavailable(denied ? "麦克风权限未开放" : "无法启动麦克风");
   }
 }
 
 function stopListening(shouldApply = true) {
-  if (state.demoVoiceMode) return;
   state.submitOnEnd = shouldApply;
   if (state.recognitionPending) {
     if (shouldApply) state.stopAfterStart = true;
@@ -646,14 +618,10 @@ function bindEvents() {
     event.preventDefault();
     voicePressStartedAt = Date.now();
     listeningBeforePress = state.listening || state.recognitionPending;
-    if (!listeningBeforePress && !state.demoVoiceMode) startListening();
+    if (!listeningBeforePress) startListening();
   });
   els.holdButton.addEventListener("pointerup", (event) => {
     event.preventDefault();
-    if (state.demoVoiceMode) {
-      runDemoVoice();
-      return;
-    }
     if (listeningBeforePress || Date.now() - voicePressStartedAt >= 650) {
       stopListening(true);
       return;

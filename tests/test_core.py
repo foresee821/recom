@@ -420,6 +420,16 @@ class VoiceInteractionSourceTests(unittest.TestCase):
         self.assertIn("recognition.onstart", source)
         self.assertIn("刚刚没有录到声音，请重新按住说话", source)
 
+    def test_voice_fallback_never_simulates_a_recognition_result(self):
+        source = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("window.SpeechRecognition || window.webkitSpeechRecognition", source)
+        self.assertIn("请使用 Chrome、Edge 或 Safari", source)
+        self.assertNotIn("演示识别", source)
+        self.assertNotIn("runDemoVoice", source)
+        self.assertNotIn("demoVoiceMode", source)
+        self.assertNotIn("bootstrap.examples[state.scene][0]", source)
+
     def test_static_assets_work_under_a_github_pages_subpath(self):
         static_dir = Path(__file__).parents[1] / "static"
         source = "\n".join(
