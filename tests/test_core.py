@@ -420,6 +420,18 @@ class VoiceInteractionSourceTests(unittest.TestCase):
         self.assertIn("recognition.onstart", source)
         self.assertIn("刚刚没有录到声音，请重新按住说话", source)
 
+    def test_static_assets_work_under_a_github_pages_subpath(self):
+        static_dir = Path(__file__).parents[1] / "static"
+        source = "\n".join(
+            (static_dir / filename).read_text(encoding="utf-8")
+            for filename in ("index.html", "styles.css", "app.js")
+        )
+
+        self.assertNotIn('src="/assets/', source)
+        self.assertNotIn('href="/styles.css', source)
+        self.assertNotIn('src="/app.js', source)
+        self.assertNotIn("url('/assets/", source)
+
 
 if __name__ == "__main__":
     unittest.main()

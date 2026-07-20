@@ -72,7 +72,7 @@ button { border: 0; cursor: pointer; }
 
 .channel-grid { display:grid; grid-template-columns:repeat(6,1fr); padding:8px 0 6px; background:#fff; }
 .channel-grid button { display:grid; justify-items:center; gap:4px; min-width:0; padding:0; background:transparent; color:#222; font-size:9px; }
-.channel-grid span { display:grid; place-items:center; width:39px; height:36px; border-radius:10px; color:transparent; font-size:0; background-image:url('/assets/taobao-icon-reference.jpg'); background-repeat:no-repeat; background-size:460px auto; }
+.channel-grid span { display:grid; place-items:center; width:39px; height:36px; border-radius:10px; color:transparent; font-size:0; background-image:url('assets/taobao-icon-reference.jpg'); background-repeat:no-repeat; background-size:460px auto; }
 .channel-grid b { max-width:54px; overflow:hidden; white-space:nowrap; font-weight:500; }
 .icon-factory { background-position:-30px -169px; }
 .icon-sign { background-position:-112px -170px; }
@@ -88,7 +88,7 @@ button { border: 0; cursor: pointer; }
 .operation-card header span { color:#28a464; font-size:8px; }
 .live-card header span { padding:2px 4px; border-radius:4px; background:#fb3660; color:#fff; }
 .flash-card header span { color:#f0443a; }
-.op-photo,.product-photo { background-image:url('/assets/taobao-products-v1.png'); background-repeat:no-repeat; background-size:200% 300%; }
+.op-photo,.product-photo { background-image:url('assets/taobao-products-v1.png'); background-repeat:no-repeat; background-size:200% 300%; }
 .op-photo { height:91px; background-color:#eee; }
 .op-photo-fashion { position:relative; background-position:0 50%; }
 .op-photo-fashion::after { content:""; position:absolute; inset:0; background:linear-gradient(transparent 55%,rgba(0,0,0,.45)); }
@@ -116,7 +116,7 @@ button { border: 0; cursor: pointer; }
 .product-photo.sprite-p4 { background-position:100% 50%; }
 .product-photo.sprite-p5 { background-position:0 100%; }
 .product-photo.sprite-p6 { background-position:100% 100%; }
-.product-photo[class*="catalog-p"] { background-image:url('/assets/catalog-products-v1.png'); background-size:400% 400%; }
+.product-photo[class*="catalog-p"] { background-image:url('assets/catalog-products-v1.png'); background-size:400% 400%; }
 .product-photo.catalog-p1 { background-position:0 0; }
 .product-photo.catalog-p2 { background-position:33.333% 0; }
 .product-photo.catalog-p3 { background-position:66.667% 0; }

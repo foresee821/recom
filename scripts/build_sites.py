@@ -290,9 +290,10 @@ def build() -> None:
 
     index_path = CLIENT / "index.html"
     index = index_path.read_text(encoding="utf-8")
-    script_marker = '<script src="/app.js'
-    index = index.replace(script_marker, '<script src="/demo-static.js"></script>\n  ' + script_marker, 1)
+    script_marker = '<script src="app.js'
+    index = index.replace(script_marker, '<script src="demo-static.js"></script>\n  ' + script_marker, 1)
     index_path.write_text(index, encoding="utf-8")
+    (CLIENT / ".nojekyll").touch()
     (SERVER / "index.js").write_text(WORKER.strip() + "\n", encoding="utf-8")
 
 

@@ -109,15 +109,15 @@ const productSpritePanels = {
 };
 
 const caseSpriteSources = {
-  rental: "/assets/case-rental-products-v1.png",
-  concert: "/assets/case-concert-products-v1.png",
-  happy: "/assets/case-happiness-products-v1.png",
-  sunscreen: "/assets/case-sunscreen-products-v1.png",
-  dressbase: "/assets/case-diverse-dresses-v1.png",
-  dresskorean: "/assets/case-korean-dark-dresses-v1.png",
-  dresscase: "/assets/case-korean-dresses-v1.png",
-  fitcase: "/assets/case-fitness-products-v1.png",
-  wow: "/assets/case-eye-catching-products-v1.png",
+  rental: "assets/case-rental-products-v1.png",
+  concert: "assets/case-concert-products-v1.png",
+  happy: "assets/case-happiness-products-v1.png",
+  sunscreen: "assets/case-sunscreen-products-v1.png",
+  dressbase: "assets/case-diverse-dresses-v1.png",
+  dresskorean: "assets/case-korean-dark-dresses-v1.png",
+  dresscase: "assets/case-korean-dresses-v1.png",
+  fitcase: "assets/case-fitness-products-v1.png",
+  wow: "assets/case-eye-catching-products-v1.png",
 };
 
 function caseSpriteFor(productId) {
@@ -176,7 +176,7 @@ function productCard(item, index, isNear = false) {
     ? `<div class="product-image product-photo case-product" style="--case-image:url('${caseSprite.image}');--case-position:${caseSprite.position}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
     : spritePanel
     ? `<div class="product-image product-photo ${spritePanel}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
-    : `<img class="product-image" src="${item.image}" alt="${escapeHtml(item.title)}" />`;
+    : `<img class="product-image" src="${item.image.replace(/^\/assets\//, "assets/")}" alt="${escapeHtml(item.title)}" />`;
   return `
     <article class="product-card is-new" style="--delay:${Math.min(index * 55, 330)}ms">
       ${image}
