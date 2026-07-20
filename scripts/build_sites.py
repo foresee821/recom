@@ -190,27 +190,41 @@ STATIC_ENGINE = r"""
     const sourceKey = intentSourceKey(intent) || sourceCondition?.sourceKey;
     const prefix = groupPrefixes[sourceKey];
     const scored = [];
+    const fallbackScored = [];
     for (const item of bootstrap.products) {
       let score = item.baseScore || 0;
+      let fallbackScore = score;
       let blocked = false;
       for (const condition of session) {
         const matches = conditionMatches(item, condition);
         if (condition.operator === "neq" && matches) {
           blocked = true;
-          break;
+          fallbackScore -= 80;
+        } else if (condition.operator === "neq") {
+          fallbackScore += 8;
         }
         if (condition.operator === "lte" && !matches && condition.strength === "hard") {
           blocked = true;
-          break;
+          fallbackScore -= 4;
+        } else if (condition.operator === "lte") {
+          fallbackScore += matches ? 48 : -4;
         }
-        if (condition.operator === "eq") score += matches ? 70 : -12;
+        if (condition.operator === "eq") {
+          score += matches ? 70 : -12;
+          fallbackScore += matches ? 70 : -12;
+        }
       }
-      if (blocked) continue;
-      if (prefix && item.id.startsWith(prefix)) score += 800;
-      scored.push([score, item.id]);
+      if (prefix && item.id.startsWith(prefix)) {
+        score += 800;
+        fallbackScore += 800;
+      }
+      fallbackScored.push([fallbackScore, item.id]);
+      if (!blocked) scored.push([score, item.id]);
     }
     scored.sort((left, right) => right[0] - left[0]);
-    return scored.map((entry) => entry[1]);
+    fallbackScored.sort((left, right) => right[0] - left[0]);
+    const resultIds = (scored.length ? scored : fallbackScored).map((entry) => entry[1]);
+    return resultIds.length ? resultIds : clone(bootstrap.initialRecommendations);
   }
 
   async function staticApi(path, options = {}) {

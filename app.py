@@ -1489,6 +1489,39 @@ def rank_results(
     return rank_product_results(scene, conditions)
 
 
+def rank_results_for_display(
+    scene: str,
+    conditions: list[dict[str, Any]],
+    intent: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    ranked = rank_results(scene, conditions, intent)
+    response: dict[str, Any] = {**ranked, "fallbackApplied": False}
+    if scene != "recommend" or ranked["exact"]:
+        return response
+
+    softened_conditions = [
+        {
+            **condition,
+            "strength": "soft" if condition["strength"] == "hard" else condition["strength"],
+        }
+        for condition in conditions
+    ]
+    relaxed = (
+        rank_results(scene, softened_conditions, intent)
+        if softened_conditions != conditions
+        else ranked
+    )
+    fallback_ids = (
+        relaxed["exact"]
+        or relaxed["near"]
+        or ranked["near"]
+        or INITIAL_RECOMMENDATIONS
+    )
+    response["exact"] = list(dict.fromkeys(fallback_ids))[:80]
+    response["fallbackApplied"] = True
+    return response
+
+
 def feedback_for(intent: dict[str, Any]) -> str:
     if intent["type"] == "unknown":
         return "我还没听懂。可以说具体商品、要完成的场景，或想探索的新灵感。"
@@ -1589,7 +1622,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
                     raise ValueError("sessionIntent 必须是数组")
                 intent = parse_intent(transcript)
                 conditions = merge_conditions(existing, intent)
-                ranked = rank_results(scene, conditions, intent)
+                ranked = rank_results_for_display(scene, conditions, intent)
                 engine = {
                     "mode": intent["mode"],
                     "modeLabel": intent["modeLabel"],
@@ -1604,6 +1637,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
                     "resultIds": ranked["exact"],
                     "nearMatchIds": ranked["near"],
                     "products": products_for_ranked_results(ranked),
+                    "fallbackApplied": ranked["fallbackApplied"],
                     "feedback": feedback_for(intent),
                 })
                 return

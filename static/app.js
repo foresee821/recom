@@ -218,6 +218,14 @@ function renderGrid(container, ids, isNear = false) {
   container.innerHTML = uniqueIds.map((id, index) => productCard(state.products.get(id), index, isNear)).join("");
 }
 
+function usableResultIds(...groups) {
+  for (const ids of groups) {
+    const usable = [...new Set(ids || [])].filter((id) => state.products.has(id));
+    if (usable.length > 0) return usable;
+  }
+  return [];
+}
+
 function renderProducts() {
   renderGrid(els.recommendGrid, state.recommendationIds);
   renderGrid(els.searchGrid, state.searchIds);
@@ -557,7 +565,12 @@ async function applyTranscript(transcript) {
     (result.products || []).forEach((item) => state.products.set(item.id, item));
     state.sessionIntent = result.sessionIntent;
     if (state.scene === "recommend") {
-      state.recommendationIds = result.resultIds;
+      state.recommendationIds = usableResultIds(
+        result.resultIds,
+        result.nearMatchIds,
+        state.previous?.recommendationIds,
+        state.bootstrap.initialRecommendations,
+      );
       els.subtitle.textContent = "已融合你刚刚表达的即时意图";
     } else {
       state.searchIds = result.resultIds;
@@ -594,7 +607,14 @@ async function rerankCurrentConditions() {
     body: JSON.stringify({ scene: state.scene, transcript: "保持当前条件", sessionIntent: state.sessionIntent }),
   });
   (result.products || []).forEach((item) => state.products.set(item.id, item));
-  if (state.scene === "recommend") state.recommendationIds = result.resultIds;
+  if (state.scene === "recommend") {
+    state.recommendationIds = usableResultIds(
+      result.resultIds,
+      result.nearMatchIds,
+      state.recommendationIds,
+      state.bootstrap.initialRecommendations,
+    );
+  }
   else {
     state.searchIds = result.resultIds;
     state.nearIds = result.resultIds.length < 3 ? result.nearMatchIds : [];

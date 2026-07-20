@@ -167,6 +167,26 @@ class IntentParserTests(unittest.TestCase):
 
 
 class RankingTests(unittest.TestCase):
+    def test_recognized_home_intent_never_returns_an_empty_feed(self):
+        for transcript, expected_value in (
+            ("只看OTC药品，50元以内", "OTC药品"),
+            ("只看电吹风，50元以内", "吹风机"),
+        ):
+            with self.subTest(transcript=transcript):
+                intent = app.parse_intent(transcript)
+                conditions = app.merge_conditions([], intent)
+                ranked = app.rank_results_for_display("recommend", conditions, intent)
+
+                self.assertTrue(ranked["fallbackApplied"])
+                self.assertGreater(len(ranked["exact"]), 0)
+                self.assertTrue(
+                    any(
+                        app.product_contains_value(app.PRODUCT_BY_ID[item_id], expected_value)
+                        for item_id in ranked["exact"][:10]
+                    ),
+                    ranked["exact"][:10],
+                )
+
     def test_home_intent_pushes_home_items_ahead_of_running_shoes(self):
         intent = app.parse_intent("少点跑鞋，多看看家居")
         ranked = app.rank_results("recommend", intent["slots"])["exact"]
@@ -544,6 +564,13 @@ class TaxonomyCatalogTests(unittest.TestCase):
 
 
 class VoiceInteractionSourceTests(unittest.TestCase):
+    def test_home_feed_has_a_defensive_non_empty_result_fallback(self):
+        source = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("function usableResultIds", source)
+        self.assertIn("state.previous?.recommendationIds", source)
+        self.assertIn("state.bootstrap.initialRecommendations", source)
+
     def test_mobile_voice_does_not_preflight_or_surface_aborted_message(self):
         source = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
 
