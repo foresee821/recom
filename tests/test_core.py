@@ -1,4 +1,5 @@
 import unittest
+from collections import Counter
 from pathlib import Path
 
 import app
@@ -448,19 +449,98 @@ class RankingTests(unittest.TestCase):
 
     def test_specific_common_product_stays_ahead_of_context_and_audience_words(self):
         cases = {
-            "家里抽纸用完了": "common-tissue-",
-            "给宝宝买奶粉": "common-formula-",
-            "新手钓鱼用什么鱼竿": "common-fishing-",
+            "家里抽纸用完了": "纸巾",
+            "给宝宝买奶粉": "奶粉",
+            "新手钓鱼用什么鱼竿": "鱼竿",
         }
 
-        for transcript, expected_prefix in cases.items():
+        for transcript, expected_value in cases.items():
             with self.subTest(transcript=transcript):
                 intent = app.parse_intent(transcript)
                 ranked = app.rank_results("recommend", intent["slots"], intent)["exact"][:2]
                 self.assertTrue(
-                    all(item_id.startswith(expected_prefix) for item_id in ranked),
+                    all(
+                        app.product_contains_value(app.PRODUCT_BY_ID[item_id], expected_value)
+                        for item_id in ranked
+                    ),
                     ranked,
                 )
+
+
+class TaxonomyCatalogTests(unittest.TestCase):
+    def test_excel_taxonomy_generates_ten_products_per_category_pair(self):
+        counts = Counter(
+            (item["xcat1"], item["xcat2"])
+            for item in app.TAXONOMY_PRODUCTS
+        )
+
+        self.assertEqual(len(app.TAXONOMY_PARENT_NAMES), 148)
+        self.assertEqual(len(app.TAXONOMY_CATEGORIES), 1341)
+        self.assertEqual(len(app.TAXONOMY_PRODUCTS), 13410)
+        self.assertEqual(len(counts), 1341)
+        self.assertEqual(set(counts.values()), {10})
+
+    def test_spoken_product_maps_to_excel_primary_and_secondary_categories(self):
+        cases = {
+            "想买个吹风机": ("个人护理", "电吹风"),
+            "我想买水杯": ("厨房餐饮具", "杯子/水杯/水壶"),
+            "给我推荐连衣裙": ("女装", "连衣裙"),
+            "想买电饭煲": ("中式厨房", "电饭煲"),
+        }
+
+        for transcript, expected in cases.items():
+            with self.subTest(transcript=transcript):
+                intent = app.parse_intent(transcript)
+                self.assertEqual(
+                    (intent["taxonomy"]["xcat1"], intent["taxonomy"]["xcat2"]),
+                    expected,
+                )
+
+    def test_ambiguous_secondary_uses_spoken_primary_category(self):
+        intent = app.parse_intent("厨房餐饮具里的餐具")
+
+        self.assertEqual(intent["taxonomy"]["xcat1"], "厨房餐饮具")
+        self.assertEqual(intent["taxonomy"]["xcat2"], "餐具")
+
+    def test_primary_category_only_returns_diverse_secondary_categories(self):
+        intent = app.parse_intent("看看个人护理")
+        ranked = app.rank_results("recommend", intent["slots"], intent)["exact"][:10]
+        items = [app.PRODUCT_BY_ID[item_id] for item_id in ranked]
+
+        self.assertEqual(intent["taxonomy"], {"xcat1": "个人护理", "xcat2": None})
+        self.assertTrue(all(item["xcat1"] == "个人护理" for item in items))
+        self.assertGreaterEqual(len({item["xcat2"] for item in items}), 8)
+
+    def test_secondary_category_returns_its_ten_concrete_products(self):
+        intent = app.parse_intent("想买个吹风机")
+        ranked = app.rank_results("recommend", intent["slots"], intent)["exact"]
+        items = [app.PRODUCT_BY_ID[item_id] for item_id in ranked]
+
+        self.assertEqual(len(items), 10)
+        self.assertTrue(all(item["xcat1"] == "个人护理" for item in items))
+        self.assertTrue(all(item["xcat2"] == "电吹风" for item in items))
+
+    def test_price_follow_up_keeps_taxonomy_category(self):
+        category_intent = app.parse_intent("想买电饭煲")
+        session = app.merge_conditions([], category_intent)
+        price_intent = app.parse_intent("500元以内")
+        session = app.merge_conditions(session, price_intent)
+        ranked = app.rank_results("recommend", session, price_intent)["exact"]
+        items = [app.PRODUCT_BY_ID[item_id] for item_id in ranked]
+
+        self.assertGreater(len(items), 0)
+        self.assertTrue(all(item["xcat2"] == "电饭煲" for item in items))
+        self.assertTrue(all(item["price"] <= 500 for item in items))
+
+    def test_api_can_return_dynamic_products_without_bloating_bootstrap(self):
+        intent = app.parse_intent("给我推荐连衣裙")
+        ranked = app.rank_results("recommend", intent["slots"], intent)
+        dynamic_products = app.products_for_ranked_results(ranked)
+        bootstrap_ids = {item["id"] for item in app.bootstrap_payload()["products"]}
+
+        self.assertEqual(len(dynamic_products), 10)
+        self.assertTrue(all(item["id"].startswith("tax-") for item in dynamic_products))
+        self.assertTrue(all(item["id"] not in bootstrap_ids for item in dynamic_products))
 
 
 class VoiceInteractionSourceTests(unittest.TestCase):

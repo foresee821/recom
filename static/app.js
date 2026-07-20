@@ -178,6 +178,8 @@ function productReasons(item) {
       return item.category === condition.value || item.attributes.includes(condition.value) ||
         (condition.value === "家居" && item.category === "收纳");
     }
+    if (condition.name === "xcat1") return item.xcat1 === condition.value;
+    if (condition.name === "xcat2") return item.xcat2 === condition.value;
     if (condition.name === "style") return item.styles?.includes(condition.value);
     if (condition.name === "audience") return item.audiences?.includes(condition.value);
     if (condition.name === "brand") return item.brand === condition.value;
@@ -552,6 +554,7 @@ async function applyTranscript(transcript) {
       els.transcript.textContent = result.feedback;
       return;
     }
+    (result.products || []).forEach((item) => state.products.set(item.id, item));
     state.sessionIntent = result.sessionIntent;
     if (state.scene === "recommend") {
       state.recommendationIds = result.resultIds;
@@ -590,6 +593,7 @@ async function rerankCurrentConditions() {
     method: "POST",
     body: JSON.stringify({ scene: state.scene, transcript: "保持当前条件", sessionIntent: state.sessionIntent }),
   });
+  (result.products || []).forEach((item) => state.products.set(item.id, item));
   if (state.scene === "recommend") state.recommendationIds = result.resultIds;
   else {
     state.searchIds = result.resultIds;
