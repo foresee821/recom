@@ -1206,8 +1206,9 @@ class DemoHandler(SimpleHTTPRequestHandler):
 
 
 def run() -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), DemoHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), DemoHandler)
     print(f"你说了算 Demo 已启动：http://127.0.0.1:{PORT}")
+    print("手机体验：请使用电脑的局域网 IP 访问同一端口")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
