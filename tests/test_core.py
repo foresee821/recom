@@ -110,6 +110,26 @@ class IntentParserTests(unittest.TestCase):
                 intent = app.parse_intent(transcript)
                 self.assertIn(("category", "eq", expected), self._slot_values(intent))
 
+    def test_expanded_common_catalog_aliases_are_understood(self):
+        cases = {
+            "家里抽纸用完了": "纸巾",
+            "想买个吹头发的": "吹风机",
+            "推荐一个煮饭锅": "电饭煲",
+            "给我看看扫地机": "扫地机器人",
+            "需要一台学习平板": "平板电脑",
+            "想买手提电脑": "笔记本电脑",
+            "有没有便携音响": "蓝牙音箱",
+            "想看看裤子": "牛仔裤",
+            "买一件防晒衣": "外套",
+            "给宝宝买奶粉": "奶粉",
+            "新手钓鱼用什么鱼竿": "鱼竿",
+        }
+
+        for transcript, expected in cases.items():
+            with self.subTest(transcript=transcript):
+                intent = app.parse_intent(transcript)
+                self.assertIn(("category", "eq", expected), self._slot_values(intent))
+
     def test_multiple_positive_and_negative_categories_can_coexist(self):
         intent = app.parse_intent("不要零食，想看蓝牙耳机和水杯")
         values = self._slot_values(intent)
@@ -409,6 +429,38 @@ class RankingTests(unittest.TestCase):
                 condition = app.slot("category", "eq", value, "soft", display)
                 matches = [item for item in app.PRODUCTS if app.product_matches(item, condition)]
                 self.assertGreater(len(matches), 0)
+
+    def test_common_catalog_has_two_products_and_local_sprite_for_each_group(self):
+        self.assertGreaterEqual(len(app.PRODUCTS), 246)
+        for group, (_, intent_value, _) in app.COMMON_CATALOG_GROUPS.items():
+            with self.subTest(group=group):
+                matching_ids = [
+                    item["id"]
+                    for item in app.PRODUCTS
+                    if item["id"].startswith(f"common-{group}-")
+                    and app.product_contains_value(item, intent_value)
+                ]
+                self.assertEqual(len(matching_ids), 2)
+
+        asset = app.STATIC_DIR / "assets" / "common-products-v1.png"
+        self.assertTrue(asset.is_file())
+        self.assertGreater(asset.stat().st_size, 100_000)
+
+    def test_specific_common_product_stays_ahead_of_context_and_audience_words(self):
+        cases = {
+            "家里抽纸用完了": "common-tissue-",
+            "给宝宝买奶粉": "common-formula-",
+            "新手钓鱼用什么鱼竿": "common-fishing-",
+        }
+
+        for transcript, expected_prefix in cases.items():
+            with self.subTest(transcript=transcript):
+                intent = app.parse_intent(transcript)
+                ranked = app.rank_results("recommend", intent["slots"], intent)["exact"][:2]
+                self.assertTrue(
+                    all(item_id.startswith(expected_prefix) for item_id in ranked),
+                    ranked,
+                )
 
 
 class VoiceInteractionSourceTests(unittest.TestCase):

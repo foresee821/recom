@@ -130,6 +130,27 @@ function caseSpriteFor(productId) {
   };
 }
 
+const commonSpriteGroups = [
+  "laundry", "tissue", "toothbrush", "shampoo", "dryer",
+  "robotvac", "ricecooker", "airfryer", "bedding", "pillow",
+  "umbrella", "tablet", "laptop", "smartwatch", "speaker",
+  "camera", "jeans", "shirt", "jacket", "slippers",
+  "underwear", "mask", "formula", "toy", "fishing",
+];
+
+function commonSpriteFor(productId) {
+  const match = /^common-([a-z]+)-\d{2}$/.exec(productId);
+  if (!match) return null;
+  const index = commonSpriteGroups.indexOf(match[1]);
+  if (index < 0) return null;
+  const column = index % 5;
+  const row = Math.floor(index / 5);
+  return {
+    image: "assets/common-products-v1.png",
+    position: `${column * 25}% ${row * 25}%`,
+  };
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json" },
@@ -170,8 +191,11 @@ function productCard(item, index, isNear = false) {
   const tags = reasons.length ? reasons : item.attributes.slice(0, 1);
   const spritePanel = productSpritePanels[item.id];
   const caseSprite = caseSpriteFor(item.id);
+  const commonSprite = commonSpriteFor(item.id);
   const image = caseSprite
     ? `<div class="product-image product-photo case-product" style="--case-image:url('${caseSprite.image}');--case-position:${caseSprite.position}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
+    : commonSprite
+    ? `<div class="product-image product-photo common-product" style="--common-image:url('${commonSprite.image}');--common-position:${commonSprite.position}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
     : spritePanel
     ? `<div class="product-image product-photo ${spritePanel}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
     : `<img class="product-image" src="${item.image.replace(/^\/assets\//, "assets/")}" alt="${escapeHtml(item.title)}" />`;
