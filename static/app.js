@@ -42,9 +42,12 @@ const state = {
   recognition: null,
   listening: false,
   recognitionPending: false,
+  recognitionStarted: false,
   recognitionFailed: false,
   submitOnEnd: false,
   stopAfterStart: false,
+  cancelOnStart: false,
+  ignoreNextAbort: false,
   demoVoiceMode: false,
   demoVoiceTimer: null,
   transcript: "",
@@ -110,13 +113,15 @@ const caseSpriteSources = {
   concert: "/assets/case-concert-products-v1.png",
   happy: "/assets/case-happiness-products-v1.png",
   sunscreen: "/assets/case-sunscreen-products-v1.png",
+  dressbase: "/assets/case-diverse-dresses-v1.png",
+  dresskorean: "/assets/case-korean-dark-dresses-v1.png",
   dresscase: "/assets/case-korean-dresses-v1.png",
   fitcase: "/assets/case-fitness-products-v1.png",
   wow: "/assets/case-eye-catching-products-v1.png",
 };
 
 function caseSpriteFor(productId) {
-  const match = /^(rental|concert|happy|sunscreen|dresscase|fitcase|wow)-(\d{2})$/.exec(productId);
+  const match = /^(rental|concert|happy|sunscreen|dressbase|dresskorean|dresscase|fitcase|wow)-(\d{2})$/.exec(productId);
   if (!match) return null;
   const index = Number(match[2]) - 1;
   const column = index % 4;
@@ -361,6 +366,27 @@ function createRecognition() {
   recognition.lang = "zh-CN";
   recognition.interimResults = true;
   recognition.continuous = false;
+  recognition.onstart = () => {
+    state.recognitionPending = false;
+    state.recognitionStarted = true;
+    state.listening = true;
+    if (state.cancelOnStart) {
+      state.cancelOnStart = false;
+      state.ignoreNextAbort = true;
+      state.listening = false;
+      state.recognitionStarted = false;
+      recognition.abort();
+      return;
+    }
+    setListeningUI(true);
+    if (state.stopAfterStart) {
+      state.stopAfterStart = false;
+      state.submitOnEnd = true;
+      els.transcript.textContent = "麦克风已就绪，请说话，再点一次结束";
+      return;
+    }
+    els.transcript.textContent = "我在听…";
+  };
   recognition.onresult = (event) => {
     let value = "";
     for (let i = event.resultIndex; i < event.results.length; i += 1) value += event.results[i][0].transcript;
@@ -368,17 +394,28 @@ function createRecognition() {
     els.transcript.textContent = state.transcript || "我在听…";
   };
   recognition.onerror = (event) => {
-    state.recognitionFailed = true;
-    state.submitOnEnd = false;
+    const wasExpectedAbort = event.error === "aborted" && state.ignoreNextAbort;
+    const canSubmitTranscript = event.error === "aborted" && state.submitOnEnd && Boolean(state.transcript);
+    state.ignoreNextAbort = false;
+    state.recognitionFailed = !canSubmitTranscript;
+    if (!canSubmitTranscript) state.submitOnEnd = false;
     state.listening = false;
+    state.recognitionPending = false;
+    state.recognitionStarted = false;
     setListeningUI(false);
+    if (event.error === "aborted") {
+      state.recognition = null;
+      if (!wasExpectedAbort && !canSubmitTranscript) {
+        els.transcript.textContent = "刚刚没有录到声音，请重新按住说话";
+      }
+      return;
+    }
     const messages = {
       "not-allowed": "麦克风权限未开放",
       "service-not-allowed": "当前浏览器限制了语音服务",
       network: "语音识别服务暂时无法连接",
       "audio-capture": "没有检测到可用麦克风",
       "no-speech": "没有听清，请再试一次",
-      aborted: "语音识别已取消",
     };
     const message = messages[event.error] || `语音识别失败（${event.error || "未知错误"}）`;
     if (["not-allowed", "service-not-allowed", "network", "audio-capture"].includes(event.error)) {
@@ -391,6 +428,7 @@ function createRecognition() {
     const shouldSubmit = state.submitOnEnd && state.transcript && !state.recognitionFailed;
     state.listening = false;
     state.recognitionPending = false;
+    state.recognitionStarted = false;
     state.submitOnEnd = false;
     setListeningUI(false);
     if (shouldSubmit) {
@@ -425,7 +463,10 @@ function enableDemoVoice(reason) {
   state.demoVoiceMode = true;
   state.listening = false;
   state.recognitionPending = false;
+  state.recognitionStarted = false;
   state.stopAfterStart = false;
+  state.cancelOnStart = false;
+  state.recognition = null;
   setListeningUI(false);
   els.transcript.textContent = `${reason}。可点击“演示识别”走完整流程。`;
 }
@@ -446,31 +487,7 @@ function runDemoVoice() {
   }, 900);
 }
 
-async function requestMicrophoneAccess() {
-  if (!navigator.mediaDevices?.getUserMedia) return;
-  const microphoneRequest = navigator.mediaDevices.getUserMedia({ audio: true });
-  let timeoutId;
-  const timeout = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      const error = new Error("等待麦克风授权超时");
-      error.name = "TimeoutError";
-      reject(error);
-    }, 8000);
-  });
-  try {
-    const stream = await Promise.race([microphoneRequest, timeout]);
-    stream.getTracks().forEach((track) => track.stop());
-  } catch (error) {
-    if (error?.name === "TimeoutError") {
-      microphoneRequest.then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-async function startListening() {
+function startListening() {
   if (state.demoVoiceMode) {
     runDemoVoice();
     return;
@@ -482,28 +499,23 @@ async function startListening() {
     return;
   }
   state.recognitionPending = true;
+  state.recognitionStarted = false;
   state.recognitionFailed = false;
+  state.cancelOnStart = false;
+  state.stopAfterStart = false;
   setMicrophonePendingUI();
   els.transcript.textContent = "正在连接麦克风…";
   try {
-    await requestMicrophoneAccess();
     state.transcript = "";
-    state.listening = true;
-    state.recognitionPending = false;
-    setListeningUI(true);
-    els.transcript.textContent = "我在听…";
     state.recognition.start();
-    if (state.stopAfterStart) {
-      state.stopAfterStart = false;
-      stopListening(true);
-    }
   } catch (error) {
     state.listening = false;
     state.recognitionPending = false;
+    state.recognitionStarted = false;
+    state.recognition = null;
     setListeningUI(false);
     const denied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
-    const timedOut = error?.name === "TimeoutError";
-    enableDemoVoice(timedOut ? "内置浏览器未开放麦克风权限" : denied ? "麦克风权限未开放" : "无法启动麦克风");
+    enableDemoVoice(denied ? "麦克风权限未开放" : "无法启动麦克风");
   }
 }
 
@@ -511,7 +523,8 @@ function stopListening(shouldApply = true) {
   if (state.demoVoiceMode) return;
   state.submitOnEnd = shouldApply;
   if (state.recognitionPending) {
-    state.stopAfterStart = true;
+    if (shouldApply) state.stopAfterStart = true;
+    else state.cancelOnStart = true;
     return;
   }
   if (state.recognition && state.listening) {

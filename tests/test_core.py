@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 import app
 
@@ -299,9 +300,6 @@ class RankingTests(unittest.TestCase):
         self.assertEqual(
             [app.parse_intent(example)["mode"] for example in payload["examples"]["recommend"]],
             [
-                "product",
-                "product",
-                "product",
                 "scenario",
                 "explore",
                 "scenario",
@@ -331,13 +329,26 @@ class RankingTests(unittest.TestCase):
 
     def test_dress_follow_ups_keep_category_and_add_style_and_color(self):
         session = []
-        for transcript in (
-            "给我推荐一些好看的裙子",
-            "想要韩式风格",
-            "想要颜色浅一点",
-        ):
-            intent = app.parse_intent(transcript)
-            session = app.merge_conditions(session, intent)
+        intent = app.parse_intent("给我推荐一些好看的裙子")
+        session = app.merge_conditions(session, intent)
+        varied_ranked = app.rank_results("recommend", session, intent)["exact"]
+        self.assertGreaterEqual(
+            sum(item_id.startswith("dressbase-") for item_id in varied_ranked[:12]),
+            10,
+            varied_ranked[:12],
+        )
+
+        intent = app.parse_intent("想要韩式风格")
+        session = app.merge_conditions(session, intent)
+        korean_ranked = app.rank_results("recommend", session, intent)["exact"]
+        self.assertGreaterEqual(
+            sum(item_id.startswith("dresskorean-") for item_id in korean_ranked[:12]),
+            10,
+            korean_ranked[:12],
+        )
+
+        intent = app.parse_intent("想要颜色浅一点")
+        session = app.merge_conditions(session, intent)
 
         session_values = {
             (item["name"], item["operator"], item["value"]) for item in session
@@ -353,13 +364,12 @@ class RankingTests(unittest.TestCase):
             ranked[:12],
         )
 
-    def test_seven_preset_cases_have_at_least_ten_local_image_products(self):
+    def test_six_preset_cases_have_at_least_ten_local_image_products(self):
         cases = [
             ("我的出租屋还能更舒服吗？", "scenario", "rental-"),
             ("我要去看演唱会有什么推荐好物", "scenario", "concert-"),
             ("买什么东西可以提升幸福感", "explore", "happy-"),
             ("有什么好用的防晒霜", "product", "sunscreen-"),
-            ("给我推荐一些好看的裙子", "product", "dresscase-"),
             ("给我推荐点健身好物", "scenario", "fitcase-"),
             ("有没有让我眼前一亮的好物", "explore", "wow-"),
         ]
@@ -385,6 +395,8 @@ class RankingTests(unittest.TestCase):
             "case-concert-products-v1.png",
             "case-happiness-products-v1.png",
             "case-sunscreen-products-v1.png",
+            "case-diverse-dresses-v1.png",
+            "case-korean-dark-dresses-v1.png",
             "case-korean-dresses-v1.png",
             "case-fitness-products-v1.png",
             "case-eye-catching-products-v1.png",
@@ -397,6 +409,16 @@ class RankingTests(unittest.TestCase):
                 condition = app.slot("category", "eq", value, "soft", display)
                 matches = [item for item in app.PRODUCTS if app.product_matches(item, condition)]
                 self.assertGreater(len(matches), 0)
+
+
+class VoiceInteractionSourceTests(unittest.TestCase):
+    def test_mobile_voice_does_not_preflight_or_surface_aborted_message(self):
+        source = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertNotIn("getUserMedia", source)
+        self.assertNotIn("语音识别已取消", source)
+        self.assertIn("recognition.onstart", source)
+        self.assertIn("刚刚没有录到声音，请重新按住说话", source)
 
 
 if __name__ == "__main__":
