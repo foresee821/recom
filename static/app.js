@@ -30,6 +30,10 @@ const els = {
   toast: document.querySelector("#toast"),
 };
 
+const TRANSCRIBE_ENDPOINT = window.location.hostname.endsWith("github.io")
+  ? "https://recom-tau.vercel.app/api/transcribe"
+  : "/api/transcribe";
+
 const state = {
   bootstrap: null,
   products: new Map(),
@@ -50,6 +54,10 @@ const state = {
   ignoreNextAbort: false,
   demoVoiceMode: false,
   demoVoiceTimer: null,
+  mediaRecorder: null,
+  mediaStream: null,
+  mediaChunks: [],
+  recorderPending: false,
   transcript: "",
 };
 
@@ -439,6 +447,90 @@ function createRecognition() {
   return recognition;
 }
 
+function preferredAudioMimeType() {
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  return candidates.find((type) => window.MediaRecorder?.isTypeSupported(type)) || "";
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = () => reject(new Error("读取录音失败"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function transcribeRecording(blob) {
+  if (!blob.size) throw new Error("没有录到声音，请再试一次");
+  if (blob.size > 4 * 1024 * 1024) throw new Error("录音时间过长，请控制在 20 秒内");
+  els.transcript.textContent = "正在识别语音…";
+  const response = await fetch(TRANSCRIBE_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      audio: await blobToBase64(blob),
+      mimeType: blob.type || "audio/webm",
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "语音识别服务暂时不可用");
+  const transcript = String(payload.text || "").trim();
+  if (!transcript) throw new Error("没有听清，请再试一次");
+  state.transcript = transcript;
+  els.transcript.textContent = `“${transcript}”`;
+  await applyTranscript(transcript);
+}
+
+async function startCloudRecording() {
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return false;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = preferredAudioMimeType();
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    state.mediaStream = stream;
+    state.mediaRecorder = recorder;
+    state.mediaChunks = [];
+    recorder.ondataavailable = (event) => {
+      if (event.data.size) state.mediaChunks.push(event.data);
+    };
+    recorder.onstart = () => {
+      state.listening = true;
+      setListeningUI(true);
+      els.transcript.textContent = "我在听…";
+      if (state.stopAfterStart) {
+        state.stopAfterStart = false;
+        recorder.stop();
+      }
+    };
+    recorder.onstop = async () => {
+      const shouldSubmit = state.submitOnEnd;
+      const blob = new Blob(state.mediaChunks, { type: recorder.mimeType || "audio/webm" });
+      state.listening = false;
+      state.submitOnEnd = false;
+      state.mediaRecorder = null;
+      state.mediaChunks = [];
+      stream.getTracks().forEach((track) => track.stop());
+      state.mediaStream = null;
+      setListeningUI(false);
+      if (!shouldSubmit) return;
+      try {
+        await transcribeRecording(blob);
+      } catch (error) {
+        els.transcript.textContent = error.message;
+        showToast(error.message);
+      }
+    };
+    recorder.start();
+    return true;
+  } catch (error) {
+    state.mediaStream?.getTracks().forEach((track) => track.stop());
+    state.mediaStream = null;
+    state.mediaRecorder = null;
+    return false;
+  }
+}
+
 function setListeningUI(listening) {
   els.wave.classList.toggle("listening", listening);
   els.holdButton.classList.toggle("is-listening", listening);
@@ -487,15 +579,24 @@ function runDemoVoice() {
   }, 900);
 }
 
-function startListening() {
+async function startListening() {
   if (state.demoVoiceMode) {
     runDemoVoice();
     return;
   }
-  if (state.listening || state.recognitionPending) return;
+  if (state.listening || state.recognitionPending || state.recorderPending) return;
+  state.recorderPending = true;
+  state.submitOnEnd = false;
+  state.stopAfterStart = false;
+  setMicrophonePendingUI();
+  els.transcript.textContent = "正在连接麦克风…";
+  const cloudRecordingStarted = await startCloudRecording();
+  state.recorderPending = false;
+  if (cloudRecordingStarted) return;
+
   state.recognition ||= createRecognition();
   if (!state.recognition) {
-    enableDemoVoice("当前浏览器不支持网页语音识别");
+    enableDemoVoice("当前浏览器无法录音");
     return;
   }
   state.recognitionPending = true;
@@ -522,6 +623,14 @@ function startListening() {
 function stopListening(shouldApply = true) {
   if (state.demoVoiceMode) return;
   state.submitOnEnd = shouldApply;
+  if (state.recorderPending) {
+    if (shouldApply) state.stopAfterStart = true;
+    return;
+  }
+  if (state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
+    state.mediaRecorder.stop();
+    return;
+  }
   if (state.recognitionPending) {
     if (shouldApply) state.stopAfterStart = true;
     else state.cancelOnStart = true;

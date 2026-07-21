@@ -412,10 +412,13 @@ class RankingTests(unittest.TestCase):
 
 
 class VoiceInteractionSourceTests(unittest.TestCase):
-    def test_mobile_voice_does_not_preflight_or_surface_aborted_message(self):
+    def test_mobile_voice_uses_cloud_recording_with_browser_fallback(self):
         source = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
 
-        self.assertNotIn("getUserMedia", source)
+        self.assertIn("getUserMedia", source)
+        self.assertIn("MediaRecorder", source)
+        self.assertIn("fetch(TRANSCRIBE_ENDPOINT", source)
+        self.assertIn('"https://recom-tau.vercel.app/api/transcribe"', source)
         self.assertNotIn("语音识别已取消", source)
         self.assertIn("recognition.onstart", source)
         self.assertIn("刚刚没有录到声音，请重新按住说话", source)

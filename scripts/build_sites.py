@@ -239,6 +239,7 @@ STATIC_ENGINE = r"""
   const nativeFetch = window.fetch.bind(window);
   window.fetch = async function (input, options = {}) {
     const url = new URL(typeof input === "string" ? input : input.url, window.location.href);
+    if (url.pathname === "/api/transcribe") return nativeFetch(input, options);
     if (!url.pathname.startsWith("/api/")) return nativeFetch(input, options);
     try {
       const payload = await staticApi(url.pathname, options);
