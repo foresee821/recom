@@ -49,6 +49,12 @@ const state = {
   cancelOnStart: false,
   ignoreNextAbort: false,
   transcript: "",
+  homeCatalogProducts: [],
+  homeCatalogRound: 0,
+  homeCatalogMaxRounds: 0,
+  homeCatalogLoading: false,
+  homeCatalogComplete: false,
+  homeRecommendationIds: [],
 };
 
 const productSpritePanels = {
@@ -214,7 +220,7 @@ function productCard(item, index, isNear = false) {
 }
 
 function renderGrid(container, ids, isNear = false) {
-  const limit = isNear ? 6 : container === els.recommendGrid ? 60 : 20;
+  const limit = isNear ? 6 : container === els.recommendGrid ? ids.length : 20;
   const uniqueIds = [...new Set(ids)].filter((id) => state.products.has(id)).slice(0, limit);
   container.innerHTML = uniqueIds.map((id, index) => productCard(state.products.get(id), index, isNear)).join("");
 }
@@ -249,25 +255,43 @@ function homepageProductsForRound(products, round) {
   return interleaved;
 }
 
+function appendNextHomepageRound() {
+  if (state.homeCatalogLoading || state.homeCatalogComplete || !state.homeCatalogProducts.length) return;
+  if (state.scene !== "recommend" || state.sessionIntent.length > 0) return;
+  state.homeCatalogLoading = true;
+  const selected = homepageProductsForRound(state.homeCatalogProducts, state.homeCatalogRound);
+  if (!selected.length) {
+    state.homeCatalogComplete = true;
+    state.homeCatalogLoading = false;
+    return;
+  }
+  const startIndex = state.homeRecommendationIds.length;
+  for (const item of selected) state.products.set(item.id, item);
+  state.homeRecommendationIds.push(...selected.map((item) => item.id));
+  state.recommendationIds = [...state.homeRecommendationIds];
+  state.homeCatalogRound += 1;
+  state.homeCatalogComplete = state.homeCatalogRound >= state.homeCatalogMaxRounds;
+  const cards = selected.map((item, index) => productCard(item, startIndex + index)).join("");
+  if (startIndex === 0) els.recommendGrid.innerHTML = cards;
+  else els.recommendGrid.insertAdjacentHTML("beforeend", cards);
+  state.homeCatalogLoading = false;
+}
+
 async function loadHomepageCatalog() {
   const response = await fetch("data/home-products.json", { cache: "no-store" });
   if (!response.ok) throw new Error("首页商品数据加载失败");
   const payload = await response.json();
-  const products = Array.isArray(payload.products) ? payload.products : [];
-  if (!products.length) return;
-  let round = 0;
-  try {
-    round = Number.parseInt(localStorage.getItem("homeCatalogRound") || "0", 10) || 0;
-    localStorage.setItem("homeCatalogRound", String((round + 1) % 30));
-  } catch (_error) {
-    round = 0;
+  state.homeCatalogProducts = Array.isArray(payload.products) ? payload.products : [];
+  const categoryCounts = new Map();
+  for (const item of state.homeCatalogProducts) {
+    const key = item.xcat2 || item.category;
+    categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
   }
-  const selected = homepageProductsForRound(products, round);
-  for (const item of selected) state.products.set(item.id, item);
-  state.recommendationIds = selected.map((item) => item.id);
-  els.subtitle.textContent = `第 ${round + 1} 轮 · 每个二级类目各取收藏量第 ${round + 1} 名`;
-  els.subtitle.hidden = false;
-  renderProducts();
+  state.homeCatalogMaxRounds = Math.max(0, ...categoryCounts.values());
+  state.homeCatalogRound = 0;
+  state.homeCatalogComplete = false;
+  state.homeRecommendationIds = [];
+  appendNextHomepageRound();
 }
 
 function usableResultIds(...groups) {
@@ -368,7 +392,9 @@ function renderVoiceKeywords() {
 async function clearAllIntents() {
   const result = await api("/api/intent/reset", { method: "POST", body: "{}" });
   state.sessionIntent = [];
-  state.recommendationIds = result.resultIds;
+  state.recommendationIds = state.homeRecommendationIds.length
+    ? [...state.homeRecommendationIds]
+    : result.resultIds;
   state.searchIds = result.searchResultIds;
   state.nearIds = [];
   state.previous = null;
@@ -647,7 +673,9 @@ async function applyTranscript(transcript) {
 
 async function rerankCurrentConditions() {
   if (state.sessionIntent.length === 0) {
-    state.recommendationIds = [...state.bootstrap.initialRecommendations];
+    state.recommendationIds = state.homeRecommendationIds.length
+      ? [...state.homeRecommendationIds]
+      : [...state.bootstrap.initialRecommendations];
     state.searchIds = [...state.bootstrap.initialSearchResults];
     state.nearIds = [];
     els.subtitle.textContent = "根据你的长期偏好推荐";
@@ -739,6 +767,10 @@ function bindEvents() {
     els.transcript.textContent = `“${value}”`;
     setTimeout(() => applyTranscript(value), 500);
   });
+  els.scroller.addEventListener("scroll", () => {
+    const remaining = els.scroller.scrollHeight - els.scroller.scrollTop - els.scroller.clientHeight;
+    if (remaining < 900) appendNextHomepageRound();
+  }, { passive: true });
   bindLongPress();
 }
 

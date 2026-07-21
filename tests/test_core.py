@@ -488,8 +488,11 @@ class RankingTests(unittest.TestCase):
 
     def test_home_catalog_refresh_logic_is_wired(self):
         source = (app.STATIC_DIR / "app.js").read_text(encoding="utf-8")
-        self.assertIn('localStorage.getItem("homeCatalogRound")', source)
-        self.assertIn("homepageProductsForRound(products, round)", source)
+        self.assertNotIn('localStorage.getItem("homeCatalogRound")', source)
+        self.assertIn("appendNextHomepageRound()", source)
+        self.assertIn("state.homeCatalogRound += 1", source)
+        self.assertIn("remaining < 900", source)
+        self.assertIn('insertAdjacentHTML("beforeend", cards)', source)
         self.assertIn('fetch("data/home-products.json"', source)
 
     def test_common_catalog_has_two_products_and_local_sprite_for_each_group(self):
@@ -645,7 +648,7 @@ class VoiceInteractionSourceTests(unittest.TestCase):
 
     def test_homepage_can_render_every_secondary_category(self):
         source = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
-        self.assertIn("container === els.recommendGrid ? 60 : 20", source)
+        self.assertIn("container === els.recommendGrid ? ids.length : 20", source)
 
 
 if __name__ == "__main__":
