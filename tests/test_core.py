@@ -510,6 +510,9 @@ class RankingTests(unittest.TestCase):
         self.assertIn("rankHomeCatalogForIntent(result.sessionIntent)", source)
         self.assertIn("item.xcat2 === value", source)
         self.assertIn("item.xcat1.includes(value)", source)
+        self.assertIn("homeCatalogCategoryFromTranscript(transcript)", source)
+        self.assertIn("applyHomeCatalogIntentFallback(result, transcript)", source)
+        self.assertIn('name: "xcat2", operator: "eq", value: category', source)
 
     def test_common_catalog_has_two_products_and_local_sprite_for_each_group(self):
         self.assertGreaterEqual(len(app.PRODUCTS), 246)

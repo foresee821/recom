@@ -300,13 +300,38 @@ function rankHomeCatalogForIntent(conditions, limit = 60) {
     ["category", "xcat1", "xcat2", "price"].includes(condition.name),
   );
   if (!catalogConditions.length || !state.homeCatalogProducts.length) return [];
-  const matches = state.homeCatalogProducts.filter((item) => catalogConditions.every((condition) => {
+  const matches = state.homeCatalogProducts.filter((item) => !hiddenHomepageProductIds.has(item.id) && catalogConditions.every((condition) => {
     const matched = homeCatalogMatchesCondition(item, condition);
     return condition.operator === "neq" ? !matched : matched;
   }));
   matches.sort((left, right) => (right.ordercost || 0) - (left.ordercost || 0));
   for (const item of matches.slice(0, limit)) state.products.set(item.id, item);
   return matches.slice(0, limit).map((item) => item.id);
+}
+
+function homeCatalogCategoryFromTranscript(transcript) {
+  const normalized = String(transcript || "").replace(/[\s，。！？、,.!?“”"'：:；;]/g, "");
+  const categories = [...new Set(state.homeCatalogProducts.map((item) => item.xcat2).filter(Boolean))]
+    .sort((left, right) => right.length - left.length);
+  return categories.find((category) => normalized.includes(
+    category.replace(/[\s，。！？、,.!?“”"'：:；;]/g, ""),
+  )) || null;
+}
+
+function applyHomeCatalogIntentFallback(result, transcript) {
+  if (result.intent.type !== "unknown") return true;
+  const category = homeCatalogCategoryFromTranscript(transcript);
+  if (!category) return false;
+  const condition = {
+    name: "xcat2", operator: "eq", value: category, strength: "soft", label: category,
+  };
+  result.intent = { type: "pull", mode: "product", modeLabel: "商品意图", slots: [condition] };
+  result.sessionIntent = [
+    ...state.sessionIntent.filter((item) => !["category", "xcat2"].includes(item.name)),
+    condition,
+  ];
+  result.feedback = `已为你找到${category}商品`;
+  return true;
 }
 
 function preloadNextHomepageRound() {
@@ -720,7 +745,7 @@ async function applyTranscript(transcript) {
         sessionIntent: state.sessionIntent,
       }),
     });
-    if (result.intent.type === "unknown") {
+    if (!applyHomeCatalogIntentFallback(result, transcript)) {
       els.transcript.textContent = result.feedback;
       return;
     }
