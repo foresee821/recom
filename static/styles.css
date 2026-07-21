@@ -100,16 +100,17 @@ button { border: 0; cursor: pointer; }
 .operation-card p em { margin-left:3px; padding:1px 3px; border-radius:4px; background:var(--red); color:#fff; font-size:7px; font-style:normal; }
 
 
-.product-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
-.recommend-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:7px; margin-top:6px; }
+.product-grid { display:flex; align-items:flex-start; gap:7px; }
+.recommend-grid { margin-top:6px; }
+.product-column { display:flex; flex:1 1 0; min-width:0; flex-direction:column; gap:7px; }
 .product-card { position:relative; overflow:hidden; min-width:0; border-radius:9px; background:#fff; break-inside:avoid; margin:0 0 7px; box-shadow:0 1px 1px rgba(0,0,0,.025); transition:transform .28s ease,opacity .28s ease; }
-.recommend-grid .product-card { margin:0; }
+.product-column .product-card { margin:0; }
 .product-card.is-new { animation:card-arrive .42s cubic-bezier(.2,.8,.2,1) both; animation-delay:var(--delay,0ms); }
 @keyframes card-arrive { from{opacity:0;transform:translateY(13px) scale(.97)} to{opacity:1;transform:none} }
 .product-image { width:100%; aspect-ratio:1/.95; object-fit:cover; display:block; background-color:#eee; }
-.recommend-grid .product-card:nth-child(4n+1) .product-image { aspect-ratio:.82/1; }
-.recommend-grid .product-card:nth-child(4n+2) .product-image { aspect-ratio:1/.92; }
-.recommend-grid .product-card:nth-child(4n+3) .product-image { aspect-ratio:.9/1; }
+.recommend-grid .card-shape-0 .product-image { aspect-ratio:.82/1; }
+.recommend-grid .card-shape-1 .product-image { aspect-ratio:1/.92; }
+.recommend-grid .card-shape-2 .product-image { aspect-ratio:.9/1; }
 .product-photo.sprite-p1 { background-position:0 0; }
 .product-photo.sprite-p2 { background-position:100% 0; }
 .product-photo.sprite-p3 { background-position:0 50%; }

@@ -208,7 +208,7 @@ function productCard(item, index, isNear = false) {
     ? `<div class="product-image product-photo ${spritePanel}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
     : `<img class="product-image" src="${item.image.replace(/^\/assets\//, "assets/")}" alt="${escapeHtml(item.title)}" />`;
   return `
-    <article class="product-card is-new" style="--delay:${Math.min(index * 55, 330)}ms">
+    <article class="product-card is-new card-shape-${index % 4}" style="--delay:${Math.min(index * 55, 330)}ms">
       ${image}
       <div class="product-body">
         <p class="product-title">${isNear ? '<span style="color:#999">近似 · </span>' : ""}${escapeHtml(item.title)}</p>
@@ -222,7 +222,13 @@ function productCard(item, index, isNear = false) {
 function renderGrid(container, ids, isNear = false) {
   const limit = isNear ? 6 : container === els.recommendGrid ? ids.length : 20;
   const uniqueIds = [...new Set(ids)].filter((id) => state.products.has(id)).slice(0, limit);
-  container.innerHTML = uniqueIds.map((id, index) => productCard(state.products.get(id), index, isNear)).join("");
+  const columns = [[], []];
+  uniqueIds.forEach((id, index) => {
+    columns[index % 2].push(productCard(state.products.get(id), index, isNear));
+  });
+  container.innerHTML = columns
+    .map((cards) => `<div class="product-column">${cards.join("")}</div>`)
+    .join("");
 }
 
 function homepageProductsForRound(products, round) {
@@ -271,9 +277,15 @@ function appendNextHomepageRound() {
   state.recommendationIds = [...state.homeRecommendationIds];
   state.homeCatalogRound += 1;
   state.homeCatalogComplete = state.homeCatalogRound >= state.homeCatalogMaxRounds;
-  const cards = selected.map((item, index) => productCard(item, startIndex + index)).join("");
-  if (startIndex === 0) els.recommendGrid.innerHTML = cards;
-  else els.recommendGrid.insertAdjacentHTML("beforeend", cards);
+  if (startIndex === 0) {
+    renderGrid(els.recommendGrid, state.recommendationIds);
+  } else {
+    const columns = els.recommendGrid.querySelectorAll(".product-column");
+    selected.forEach((item, index) => {
+      const productIndex = startIndex + index;
+      columns[productIndex % 2].insertAdjacentHTML("beforeend", productCard(item, productIndex));
+    });
+  }
   state.homeCatalogLoading = false;
 }
 
