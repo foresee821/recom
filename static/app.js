@@ -352,6 +352,20 @@ async function intentCatalogProductIds(transcript, conditions) {
   return products.map((item) => item.id);
 }
 
+function applyIntentCatalogFallback(result, intentCatalogIds) {
+  if (result.intent.type !== "unknown" || !intentCatalogIds.length) return;
+  const condition = {
+    name: "category", operator: "eq", value: "露营", strength: "soft",
+    label: "露营好物", sourceMode: "scenario", sourceKey: "camping",
+  };
+  result.intent = { type: "pull", mode: "scenario", modeLabel: "场景意图", slots: [condition] };
+  result.sessionIntent = [
+    ...state.sessionIntent.filter((item) => item.sourceKey !== "camping"),
+    condition,
+  ];
+  result.feedback = "已为你准备露营好物";
+}
+
 function preloadNextHomepageRound() {
   const round = state.homeCatalogRound;
   if (state.homeCatalogComplete || round === state.homeCatalogPreloadRound) return;
@@ -764,6 +778,8 @@ async function applyTranscript(transcript) {
         sessionIntent: state.sessionIntent,
       }),
     });
+    const intentCatalogIds = await intentCatalogProductIds(transcript, result.sessionIntent || []);
+    applyIntentCatalogFallback(result, intentCatalogIds);
     if (!applyHomeCatalogIntentFallback(result, transcript)) {
       els.transcript.textContent = result.feedback;
       return;
@@ -771,7 +787,6 @@ async function applyTranscript(transcript) {
     (result.products || []).forEach((item) => state.products.set(item.id, item));
     state.sessionIntent = result.sessionIntent;
     if (state.scene === "recommend") {
-      const intentCatalogIds = await intentCatalogProductIds(transcript, result.sessionIntent);
       state.activeIntentProductIds = intentCatalogIds;
       const catalogIds = rankHomeCatalogForIntent(result.sessionIntent);
       state.recommendationIds = usableResultIds(
