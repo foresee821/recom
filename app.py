@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -11,6 +12,29 @@ from typing import Any
 
 ROOT = Path(__file__).parent
 STATIC_DIR = ROOT / "static"
+_WHALE_CONFIG_LOCK = threading.Lock()
+_WHALE_CONFIG_SIGNATURE: tuple[str, str] | None = None
+
+
+def load_local_env(path: Path) -> None:
+    """Load simple KEY=VALUE entries without adding a runtime dependency."""
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+load_local_env(ROOT / ".env")
 PORT = int(os.environ.get("PORT", "8000"))
 
 
@@ -975,7 +999,7 @@ def mode_payload(
     }
 
 
-def parse_intent(transcript: str) -> dict[str, Any]:
+def parse_intent_with_rules(transcript: str) -> dict[str, Any]:
     text = re.sub(r"\s+", "", transcript.strip())
     hard = any(word in text for word in ("必须", "只要", "只看", "不超过", "以内", "一定要"))
     strength = "hard" if hard else "soft"
@@ -1205,6 +1229,423 @@ def parse_intent(transcript: str) -> dict[str, Any]:
             route_summary="请补充商品、生活场景，或直接说想探索什么",
         ),
     }
+
+
+class IntentAPIError(RuntimeError):
+    pass
+
+
+def first_env(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def intent_api_enabled() -> bool:
+    engine = os.environ.get("INTENT_ENGINE", "auto").strip().lower()
+    if engine not in ("auto", "api", "rules"):
+        raise IntentAPIError("INTENT_ENGINE 只能是 auto、api 或 rules")
+    if engine == "rules":
+        return False
+    config_values = {
+        "INTENT_API_KEY": first_env("INTENT_API_KEY", "WHALE_API_KEY"),
+        "INTENT_API_MODEL": first_env("INTENT_API_MODEL", "WHALE_API_MODEL"),
+    }
+    missing = [name for name, value in config_values.items() if not value]
+    if not missing:
+        return True
+    if engine == "api" or len(missing) != len(config_values):
+        raise IntentAPIError(f"API 意图识别配置不完整，缺少：{', '.join(missing)}")
+    return False
+
+
+def intent_system_prompt() -> str:
+    category_values = list(dict.fromkeys(item[0] for item in COMMODITY_INTENTS))
+    attribute_values = list(dict.fromkeys(item[0] for item in ATTRIBUTE_INTENTS))
+    audience_values = list(dict.fromkeys(item[0] for item in AUDIENCE_INTENTS))
+    style_values = list(dict.fromkeys(item[0] for item in STYLE_INTENTS))
+    brand_values = list(dict.fromkeys(item[0] for item in BRAND_INTENTS))
+    scenarios = [
+        {
+            "key": item["key"],
+            "label": item["label"],
+            "targets": list(item["targets"]),
+        }
+        for item in SCENARIO_INTENTS
+    ]
+    explore_themes = [item["key"] for item in EXPLORE_INTENTS]
+    return f"""你是电商推荐系统的意图结构化引擎。把用户本轮原话转换为 JSON tag，禁止推荐商品，禁止输出解释或 Markdown。
+
+只输出一个 JSON 对象，结构如下：
+{{
+  "mode": "product|scenario|explore|unknown",
+  "type": "pull|exclude|correct|explore|unknown",
+  "polarity": "positive|negative|neutral",
+  "confidence": 0.0,
+  "evidence": ["原话中的短语"],
+  "slots": [
+    {{"name":"category|xcat1|xcat2|attribute|audience|style|brand|price|priceOrder", "operator":"eq|neq|lte|gte", "value":"字符串或数字", "strength":"hard|soft", "label":"给用户看的简短中文", "sourceMode":"可选 scenario|explore", "sourceKey":"可选主题标识"}}
+  ],
+  "scenario": {{"key":"英文短标识", "label":"中文场景", "targets":["需要的商品类目"]}},
+  "exploreTheme": "主题标识"
+}}
+
+规则：
+1. 根据用户真正要完成的购物目标判断 mode，不按固定短语匹配：用户指向可直接购买的具体商品或约束时属于 product；用户表达了一个需要多类商品共同满足的目标、活动或生活情境时属于 scenario；用户没有具体商品或生活目标、只是开放地发现新奇事物或灵感时才属于 explore；与购物无关属于 unknown。
+1.1 scenario 要理解目标背后的实际需求，自主拆成 3 到 6 个高相关、可直接购买或匹配的具体 target，优先使用下面提供的标准值。不要把用户的抽象目标简单加上“用品”二字作为 category，也不要为了凑数生成弱相关标签。
+2. “不要/少点/排除”使用 neq；“以内/以下/不超过”对 price 使用 lte；“必须/只看/一定要/预算上限”使用 hard，其余通常 soft。
+3. scenario 的每个 target 还必须生成 category/eq slot，并带 sourceMode="scenario"、sourceKey=场景 key。explore 生成 attribute/eq/新鲜感 slot，带 sourceMode="explore"、sourceKey=exploreTheme；不得臆造用户没有表达或无法从目标合理推导的约束。
+4. 多个正负条件全部保留；只提取用户确实表达的约束，不臆造性别、价格、品牌。
+5. 优先使用下列标准值；没有合适标准值时保留用户原词。
+category 标准值：{json.dumps(category_values, ensure_ascii=False)}
+attribute 标准值：{json.dumps(attribute_values, ensure_ascii=False)}
+audience 标准值：{json.dumps(audience_values, ensure_ascii=False)}
+style 标准值：{json.dumps(style_values, ensure_ascii=False)}
+brand 标准值：{json.dumps(brand_values, ensure_ascii=False)}
+xcat1 标准值：{json.dumps(TAXONOMY_PARENT_NAMES, ensure_ascii=False)}
+已知场景：{json.dumps(scenarios, ensure_ascii=False)}
+探索主题：{json.dumps(explore_themes, ensure_ascii=False)}
+6. 只有确信名称与标准品类完全一致时才输出 xcat1/xcat2；xcat2 同时输出其父级 xcat1。"""
+
+
+def extract_json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        value = "".join(
+            str(item.get("text", "")) if isinstance(item, dict) else str(item)
+            for item in value
+        )
+    if not isinstance(value, str):
+        raise IntentAPIError("模型响应中没有可解析的 JSON")
+    text = value.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text)
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end < start:
+        raise IntentAPIError("模型没有返回 JSON 对象")
+    try:
+        parsed = json.loads(text[start:end + 1])
+    except json.JSONDecodeError as exc:
+        raise IntentAPIError("模型返回的 JSON 格式不合法") from exc
+    if not isinstance(parsed, dict):
+        raise IntentAPIError("模型返回值必须是 JSON 对象")
+    return parsed
+
+
+def extract_intent_api_payload(response: dict[str, Any]) -> dict[str, Any]:
+    error_code = response.get("error_code")
+    if error_code not in (None, 0, "0", 200, "200"):
+        message = str(response.get("message") or "未知错误").strip()
+        raise IntentAPIError(f"Whale 返回错误 {error_code}：{message}")
+    if "mode" in response or "intent" in response:
+        return extract_json_object(response.get("intent", response))
+    choices = response.get("choices")
+    if isinstance(choices, list) and choices:
+        choice = choices[0]
+        if isinstance(choice, dict):
+            message = choice.get("message", {})
+            if isinstance(message, dict) and "content" in message:
+                return extract_json_object(message["content"])
+            if "text" in choice:
+                return extract_json_object(choice["text"])
+    output = response.get("output")
+    if isinstance(output, dict):
+        return extract_intent_api_payload(output)
+    raise IntentAPIError("无法从模型响应中找到意图结果")
+
+
+def default_slot_label(name: str, operator: str, value: Any) -> str:
+    if name == "price":
+        symbol = "≤" if operator == "lte" else "≥"
+        return f"{symbol}¥{value}"
+    if name == "priceOrder":
+        return "更便宜" if value == "lower" else "预算更高"
+    if operator == "neq":
+        return f"减少{value}" if name == "category" else f"排除{value}"
+    return f"增加{value}" if name == "category" else str(value)
+
+
+def normalize_api_slots(raw_slots: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_slots, list):
+        raise IntentAPIError("模型返回的 slots 必须是数组")
+    allowed_names = {
+        "category", "xcat1", "xcat2", "attribute", "audience", "style",
+        "brand", "price", "priceOrder",
+    }
+    allowed_xcat1 = set(TAXONOMY_PARENT_NAMES)
+    allowed_xcat2 = {item["xcat2"] for item in TAXONOMY_CATEGORIES}
+    normalized: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for raw in raw_slots[:24]:
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name", "")).strip()
+        operator = str(raw.get("operator", "eq")).strip().lower()
+        value = raw.get("value")
+        strength = str(raw.get("strength", "soft")).strip().lower()
+        if name not in allowed_names or strength not in ("hard", "soft"):
+            continue
+        valid_operators = {"lte", "gte"} if name == "price" else {"eq"} if name == "priceOrder" else {"eq", "neq"}
+        if operator not in valid_operators:
+            continue
+        if name == "price":
+            if isinstance(value, str):
+                match = re.search(r"\d+(?:\.\d+)?", value)
+                value = float(match.group()) if match else None
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+                continue
+            value = int(value) if float(value).is_integer() else float(value)
+        else:
+            if not isinstance(value, str) or not value.strip():
+                continue
+            value = value.strip()
+        if name == "priceOrder" and value not in ("lower", "higher"):
+            continue
+        if name == "xcat1" and value not in allowed_xcat1:
+            continue
+        if name == "xcat2" and value not in allowed_xcat2:
+            continue
+        dedupe_key = (name, operator, str(value))
+        if dedupe_key in seen:
+            continue
+        item = slot(
+            name,
+            operator,
+            value,
+            strength,
+            str(raw.get("label") or default_slot_label(name, operator, value))[:40],
+        )
+        source_mode = raw.get("sourceMode")
+        source_key = raw.get("sourceKey")
+        if source_mode in ("scenario", "explore"):
+            item["sourceMode"] = source_mode
+            if isinstance(source_key, str) and source_key.strip():
+                item["sourceKey"] = source_key.strip()[:40]
+        normalized.append(item)
+        seen.add(dedupe_key)
+    return normalized
+
+
+def normalize_api_intent(raw: dict[str, Any], transcript: str) -> dict[str, Any]:
+    mode = str(raw.get("mode", "unknown")).strip().lower()
+    if mode not in ("product", "scenario", "explore", "unknown"):
+        raise IntentAPIError("模型返回了不支持的 mode")
+    slots = normalize_api_slots(raw.get("slots", []))
+    scenario_payload = raw.get("scenario") if isinstance(raw.get("scenario"), dict) else {}
+    explore_theme = str(raw.get("exploreTheme", "fresh")).strip()[:40] or "fresh"
+
+    if mode == "scenario":
+        scenario_key = str(scenario_payload.get("key", "custom")).strip()[:40] or "custom"
+        scenario_label = str(scenario_payload.get("label", "场景需求")).strip()[:40] or "场景需求"
+        raw_targets = scenario_payload.get("targets", [])
+        if not isinstance(raw_targets, list):
+            raw_targets = []
+        targets = [str(value).strip() for value in raw_targets if isinstance(value, str) and value.strip()][:12]
+        targets = list(dict.fromkeys(targets))
+        existing_targets = {
+            item["value"] for item in slots
+            if item["name"] == "category" and item["operator"] == "eq"
+        }
+        for target in targets:
+            if target not in existing_targets:
+                slots.append({
+                    **slot("category", "eq", target, "soft", target),
+                    "sourceMode": "scenario",
+                    "sourceKey": scenario_key,
+                })
+        for item in slots:
+            if item["name"] == "category" and item["operator"] == "eq":
+                item.setdefault("sourceMode", "scenario")
+                item.setdefault("sourceKey", scenario_key)
+        if not targets:
+            targets = [
+                str(item["value"]) for item in slots
+                if item.get("sourceMode") == "scenario" and item["operator"] == "eq"
+            ]
+        scenario_payload = {"key": scenario_key, "label": scenario_label, "targets": targets}
+    elif mode == "explore":
+        if not slots:
+            slots = [{
+                **slot("attribute", "eq", "新鲜感", "soft", "发现新鲜事物"),
+                "sourceMode": "explore",
+                "sourceKey": explore_theme,
+            }]
+        for item in slots:
+            item.setdefault("sourceMode", "explore")
+            item.setdefault("sourceKey", explore_theme)
+    elif mode == "unknown":
+        slots = []
+    elif not slots:
+        mode = "unknown"
+
+    raw_type = str(raw.get("type", "")).strip().lower()
+    if mode == "explore":
+        raw_type = "explore"
+    elif mode == "unknown":
+        raw_type = "unknown"
+    elif mode == "scenario":
+        raw_type = "pull"
+    elif raw_type not in ("pull", "exclude", "correct"):
+        raw_type = (
+            "exclude" if any(item["operator"] == "neq" for item in slots) else
+            "pull"
+        )
+    polarity = str(raw.get("polarity", "")).strip().lower()
+    if mode in ("explore", "unknown"):
+        polarity = "neutral"
+    elif mode == "scenario":
+        polarity = "positive"
+    elif polarity not in ("positive", "negative"):
+        polarity = "negative" if any(item["operator"] == "neq" for item in slots) else "positive"
+    try:
+        confidence = max(0.0, min(1.0, float(raw.get("confidence", 0.8))))
+    except (TypeError, ValueError):
+        confidence = 0.8
+    evidence = raw.get("evidence", [])
+    if not isinstance(evidence, list):
+        evidence = []
+    evidence = [str(value).strip()[:40] for value in evidence if str(value).strip()][:4]
+
+    route_specs = {
+        "product": ("constraint_ranking", "商品约束排序", "按 API 提取的商品 tag 进行约束筛选与排序"),
+        "scenario": ("scenario_bundle", "场景商品组合", f"把“{scenario_payload.get('label', '场景需求')}”拆成商品组合"),
+        "explore": ("inspiration_discovery", "灵感启发推荐", "按 API 识别的探索主题增加新鲜度、趋势性与跨品类多样性"),
+        "unknown": ("clarification", "等待补充", "请补充商品、生活场景，或直接说想探索什么"),
+    }
+    route_name, route_label, route_summary = route_specs[mode]
+    result = {
+        "type": raw_type,
+        "polarity": polarity,
+        "slots": slots,
+        "scope": "session",
+        "transcript": transcript,
+        **mode_payload(
+            mode,
+            confidence=confidence,
+            evidence=evidence,
+            route_name=route_name,
+            route_label=route_label,
+            route_summary=route_summary,
+        ),
+    }
+    if mode == "scenario":
+        result["scenario"] = scenario_payload
+    if mode == "explore":
+        result["exploreTheme"] = explore_theme
+    xcat1 = next((item["value"] for item in slots if item["name"] == "xcat1" and item["operator"] == "eq"), None)
+    xcat2 = next((item["value"] for item in slots if item["name"] == "xcat2" and item["operator"] == "eq"), None)
+    if xcat1:
+        result["taxonomy"] = {"xcat1": xcat1, "xcat2": xcat2}
+    return result
+
+
+def call_whale_chat(
+    *,
+    api_key: str,
+    model: str,
+    messages: list[dict[str, Any]],
+    timeout: float,
+    base_url: str | None,
+) -> Any:
+    """Call the official Whale SDK using its OpenAI-compatible protocol."""
+    try:
+        from whale import TextGeneration
+    except ImportError as exc:
+        raise IntentAPIError(
+            "缺少 whale-sdk，请先执行 .venv/bin/pip install -r requirements.txt"
+        ) from exc
+
+    signature = (api_key, base_url or "")
+    global _WHALE_CONFIG_SIGNATURE
+    if _WHALE_CONFIG_SIGNATURE != signature:
+        with _WHALE_CONFIG_LOCK:
+            if _WHALE_CONFIG_SIGNATURE != signature:
+                if base_url:
+                    TextGeneration.set_api_key(api_key, base_url=base_url)
+                else:
+                    TextGeneration.set_api_key(api_key)
+                _WHALE_CONFIG_SIGNATURE = signature
+
+    return TextGeneration.chat(
+        model=model,
+        messages=messages,
+        stream=False,
+        temperature=0,
+        timeout=timeout,
+    )
+
+
+def extract_whale_intent_payload(response: Any) -> dict[str, Any]:
+    def field(name: str, default: Any = None) -> Any:
+        if isinstance(response, dict):
+            return response.get(name, default)
+        return getattr(response, name, default)
+
+    def safe_message(value: Any) -> str:
+        message = str(value or "未知错误")
+        # Whale's 403 message may echo the API key. Never pass that secret to the UI.
+        return re.sub(r"(?i)(api[_ ]?key\s*=\s*)[^,\s]+", r"\1***", message)
+
+    error_code = field("error_code")
+    if error_code not in (None, 0, "0", 200, "200"):
+        raise IntentAPIError(f"Whale 返回错误 {error_code}：{safe_message(field('message'))}")
+
+    if isinstance(response, dict):
+        return extract_intent_api_payload(response)
+    status_code = field("status_code")
+    if status_code not in (None, 0, 200, "200"):
+        status_message = safe_message(field("status_message"))
+        raise IntentAPIError(f"Whale 返回错误 {status_code}：{status_message}")
+    choices = field("choices")
+    if not isinstance(choices, (list, tuple)) or not choices:
+        raise IntentAPIError("Whale 响应中没有 choices")
+    choice = choices[0]
+    message = choice.get("message") if isinstance(choice, dict) else getattr(choice, "message", None)
+    if isinstance(message, dict):
+        content = message.get("content")
+    else:
+        content = getattr(message, "content", None)
+    return extract_json_object(content)
+
+
+def parse_intent_with_api(transcript: str) -> dict[str, Any]:
+    api_key = first_env("INTENT_API_KEY", "WHALE_API_KEY")
+    model = first_env("INTENT_API_MODEL", "WHALE_API_MODEL")
+    base_url = first_env("INTENT_API_URL", "WHALE_API_URL")
+    if not api_key or not model:
+        raise IntentAPIError("Whale OpenAI 协议需要配置 API Key 和 model")
+    try:
+        timeout = float(os.environ.get("INTENT_API_TIMEOUT", "20"))
+    except ValueError as exc:
+        raise IntentAPIError("INTENT_API_TIMEOUT 必须是数字") from exc
+    messages = [
+        {"role": "system", "content": intent_system_prompt()},
+        {"role": "user", "content": transcript},
+    ]
+    try:
+        response = call_whale_chat(
+            api_key=api_key,
+            model=model,
+            messages=messages,
+            timeout=timeout,
+            base_url=base_url or None,
+        )
+    except IntentAPIError:
+        raise
+    except Exception as exc:
+        detail = str(exc).replace(api_key, "***")[:300]
+        raise IntentAPIError(f"Whale 意图识别调用失败：{detail}") from exc
+    return normalize_api_intent(extract_whale_intent_payload(response), transcript)
+
+
+def parse_intent(transcript: str) -> dict[str, Any]:
+    if intent_api_enabled():
+        return parse_intent_with_api(transcript)
+    return parse_intent_with_rules(transcript)
 
 
 def condition_key(condition: dict[str, Any]) -> tuple[str, Any]:
@@ -1700,6 +2141,8 @@ class DemoHandler(SimpleHTTPRequestHandler):
                 })
                 return
             self.send_json({"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
+        except IntentAPIError as exc:
+            self.send_json({"error": str(exc)}, HTTPStatus.BAD_GATEWAY)
         except (ValueError, json.JSONDecodeError) as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 

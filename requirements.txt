@@ -1,0 +1,2 @@
+--index-url https://artlab.alibaba-inc.com/1/pypi/simple
+whale-sdk==1.2.26

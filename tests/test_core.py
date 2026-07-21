@@ -1,8 +1,13 @@
 import json
+import os
+import sys
 import unittest
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
+os.environ["INTENT_ENGINE"] = "rules"
 import app
 
 
@@ -165,6 +170,142 @@ class IntentParserTests(unittest.TestCase):
     @staticmethod
     def _slot_values(intent):
         return {(item["name"], item["operator"], item["value"]) for item in intent["slots"]}
+
+
+class IntentAPITests(unittest.TestCase):
+    def test_api_prompt_distinguishes_life_scenario_from_open_ended_exploration(self):
+        prompt = app.intent_system_prompt()
+
+        self.assertIn("不按固定短语匹配", prompt)
+        self.assertIn("需要多类商品共同满足", prompt)
+        self.assertIn("开放地发现新奇事物或灵感", prompt)
+
+    def test_whale_error_reports_authorization_failure_without_leaking_api_key(self):
+        response = SimpleNamespace(
+            error_code=403,
+            message=(
+                "Access denied!: api key is not subscribed to the model: "
+                "apiKey=real-secret, model=intent-model"
+            ),
+            choices=[],
+        )
+
+        with self.assertRaises(app.IntentAPIError) as raised:
+            app.extract_whale_intent_payload(response)
+
+        message = str(raised.exception)
+        self.assertIn("403", message)
+        self.assertIn("not subscribed", message)
+        self.assertNotIn("real-secret", message)
+
+    def test_official_whale_sdk_is_configured_and_called_with_openai_protocol(self):
+        class FakeTextGeneration:
+            configured = None
+            request = None
+
+            @classmethod
+            def set_api_key(cls, key, **kwargs):
+                cls.configured = (key, kwargs)
+
+            @classmethod
+            def chat(cls, **kwargs):
+                cls.request = kwargs
+                return "response"
+
+        fake_whale = SimpleNamespace(TextGeneration=FakeTextGeneration)
+        messages = [{"role": "user", "content": "测试"}]
+
+        with patch.dict(sys.modules, {"whale": fake_whale}):
+            with patch.object(app, "_WHALE_CONFIG_SIGNATURE", None):
+                response = app.call_whale_chat(
+                    api_key="test-secret",
+                    model="intent-model",
+                    messages=messages,
+                    timeout=20,
+                    base_url=None,
+                )
+
+        self.assertEqual(response, "response")
+        self.assertEqual(FakeTextGeneration.configured, ("test-secret", {}))
+        self.assertEqual(FakeTextGeneration.request["model"], "intent-model")
+        self.assertEqual(FakeTextGeneration.request["messages"], messages)
+        self.assertFalse(FakeTextGeneration.request["stream"])
+        self.assertEqual(FakeTextGeneration.request["temperature"], 0)
+
+    def test_configured_api_replaces_rule_parser_and_keeps_intent_contract(self):
+        model_intent = {
+            "mode": "product",
+            "type": "pull",
+            "polarity": "positive",
+            "confidence": 0.97,
+            "evidence": ["蓝牙耳机", "500元以内"],
+            "slots": [
+                {
+                    "name": "category",
+                    "operator": "eq",
+                    "value": "耳机",
+                    "strength": "soft",
+                    "label": "增加耳机",
+                },
+                {
+                    "name": "price",
+                    "operator": "lte",
+                    "value": "500元",
+                    "strength": "hard",
+                    "label": "≤¥500",
+                },
+            ],
+        }
+        response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content=f"```json\n{json.dumps(model_intent, ensure_ascii=False)}\n```"
+        ))])
+        env = {
+            "INTENT_ENGINE": "api",
+            "INTENT_API_URL": "https://model.example/v1/chat/completions",
+            "INTENT_API_KEY": "test-secret",
+            "INTENT_API_MODEL": "intent-model",
+        }
+
+        with patch.dict(os.environ, env, clear=False):
+            with patch("app.call_whale_chat", return_value=response) as whale_chat:
+                intent = app.parse_intent("想看蓝牙耳机，500元以内")
+
+        request = whale_chat.call_args.kwargs
+        self.assertEqual(request["base_url"], env["INTENT_API_URL"])
+        self.assertEqual(request["api_key"], "test-secret")
+        self.assertEqual(request["model"], "intent-model")
+        self.assertEqual(request["messages"][-1]["content"], "想看蓝牙耳机，500元以内")
+        self.assertEqual(intent["mode"], "product")
+        self.assertEqual(intent["route"]["name"], "constraint_ranking")
+        self.assertIn(("category", "eq", "耳机"), IntentParserTests._slot_values(intent))
+        self.assertIn(("price", "lte", 500), IntentParserTests._slot_values(intent))
+
+    def test_api_mode_does_not_silently_fallback_to_rules(self):
+        env = {
+            "INTENT_ENGINE": "api",
+            "INTENT_API_URL": "https://model.example/v1/chat/completions",
+            "INTENT_API_KEY": "test-secret",
+            "INTENT_API_MODEL": "intent-model",
+        }
+        response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="not json"))])
+
+        with patch.dict(os.environ, env, clear=False):
+            with patch("app.call_whale_chat", return_value=response):
+                with self.assertRaises(app.IntentAPIError):
+                    app.parse_intent("我想看水杯")
+
+    def test_partial_auto_configuration_is_rejected_instead_of_using_rules(self):
+        env = {
+            "INTENT_ENGINE": "auto",
+            "INTENT_API_URL": "https://model.example/v1/chat/completions",
+            "INTENT_API_KEY": "test-secret",
+            "INTENT_API_MODEL": "",
+        }
+
+        with patch.dict(os.environ, env, clear=False):
+            with self.assertRaisesRegex(app.IntentAPIError, "INTENT_API_MODEL"):
+                app.parse_intent("我想看水杯")
+
 
 
 class RankingTests(unittest.TestCase):
