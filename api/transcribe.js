@@ -40,17 +40,27 @@ module.exports = async function handler(request, response) {
       method: "POST",
       headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
       body: form,
+      signal: AbortSignal.timeout(22000),
     });
     const result = await upstream.json().catch(() => ({}));
     if (!upstream.ok) {
       console.error("OpenAI transcription failed", upstream.status, result?.error?.type);
+      const insufficientQuota = result?.error?.code === "insufficient_quota"
+        || result?.error?.type === "insufficient_quota";
       return response.status(upstream.status === 429 ? 429 : 502).json({
-        error: upstream.status === 429 ? "语音服务繁忙，请稍后重试" : "语音识别失败，请稍后重试",
+        error: insufficientQuota
+          ? "语音 API 额度不足，请补充额度后重试"
+          : upstream.status === 429
+            ? "语音服务繁忙，请稍后重试"
+            : "语音识别失败，请稍后重试",
       });
     }
     return response.status(200).json({ text: String(result.text || "").trim() });
   } catch (error) {
     console.error("Transcription handler error", error);
-    return response.status(500).json({ error: "语音识别服务异常" });
+    const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
+    return response.status(timedOut ? 504 : 500).json({
+      error: timedOut ? "语音识别超时，请稍后重试" : "语音识别服务异常",
+    });
   }
 };

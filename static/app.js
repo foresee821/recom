@@ -465,14 +465,25 @@ async function transcribeRecording(blob) {
   if (!blob.size) throw new Error("没有录到声音，请再试一次");
   if (blob.size > 4 * 1024 * 1024) throw new Error("录音时间过长，请控制在 20 秒内");
   els.transcript.textContent = "正在识别语音…";
-  const response = await fetch(TRANSCRIBE_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      audio: await blobToBase64(blob),
-      mimeType: blob.type || "audio/webm",
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
+  let response;
+  try {
+    response = await fetch(TRANSCRIBE_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        audio: await blobToBase64(blob),
+        mimeType: blob.type || "audio/webm",
+      }),
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("语音识别超时，请检查网络后重试");
+    throw new Error("无法连接语音服务，请检查网络后重试");
+  } finally {
+    clearTimeout(timeout);
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || "语音识别服务暂时不可用");
   const transcript = String(payload.text || "").trim();

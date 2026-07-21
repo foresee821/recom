@@ -419,6 +419,8 @@ class VoiceInteractionSourceTests(unittest.TestCase):
         self.assertIn("MediaRecorder", source)
         self.assertIn("fetch(TRANSCRIBE_ENDPOINT", source)
         self.assertIn('"https://recom-tau.vercel.app/api/transcribe"', source)
+        self.assertIn("controller.abort()", source)
+        self.assertIn("语音识别超时", source)
         self.assertNotIn("语音识别已取消", source)
         self.assertIn("recognition.onstart", source)
         self.assertIn("刚刚没有录到声音，请重新按住说话", source)
