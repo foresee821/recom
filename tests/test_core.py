@@ -500,13 +500,16 @@ class RankingTests(unittest.TestCase):
         self.assertIn("fillHomepageScrollBuffer();", source)
         self.assertIn("preloadNextHomepageRound()", source)
         self.assertIn("const image = new Image();", source)
-        self.assertIn("appendNextHomepageRound();\n  appendNextHomepageRound();", source)
+        self.assertIn("schedulePreload(preloadNextHomepageRound)", source)
         self.assertIn("appendProductToShortestColumn(els.recommendGrid, item, productIndex)", source)
         self.assertIn('fetch("data/home-products.json"', source)
         self.assertIn('"item-158364675"', source)
         self.assertIn("hiddenHomepageProductIds.has(item.id)", source)
         self.assertIn("state.recommendationIds = [];", source)
         self.assertIn("showHomepageLoading();", source)
+        self.assertIn("rankHomeCatalogForIntent(result.sessionIntent)", source)
+        self.assertIn("item.xcat2 === value", source)
+        self.assertIn("item.xcat1.includes(value)", source)
 
     def test_common_catalog_has_two_products_and_local_sprite_for_each_group(self):
         self.assertGreaterEqual(len(app.PRODUCTS), 246)

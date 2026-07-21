@@ -286,6 +286,29 @@ function homepageProductsForRound(products, round) {
   return interleaved;
 }
 
+function homeCatalogMatchesCondition(item, condition) {
+  if (condition.name === "price") return item.price <= Number(condition.value);
+  const value = String(condition.value || "");
+  if (condition.name === "xcat1") return item.xcat1 === value || item.xcat1.includes(value);
+  if (condition.name === "xcat2") return item.xcat2 === value;
+  return item.xcat2 === value || item.xcat1 === value ||
+    item.attributes.includes(value) || item.title.includes(value);
+}
+
+function rankHomeCatalogForIntent(conditions, limit = 60) {
+  const catalogConditions = conditions.filter((condition) =>
+    ["category", "xcat1", "xcat2", "price"].includes(condition.name),
+  );
+  if (!catalogConditions.length || !state.homeCatalogProducts.length) return [];
+  const matches = state.homeCatalogProducts.filter((item) => catalogConditions.every((condition) => {
+    const matched = homeCatalogMatchesCondition(item, condition);
+    return condition.operator === "neq" ? !matched : matched;
+  }));
+  matches.sort((left, right) => (right.ordercost || 0) - (left.ordercost || 0));
+  for (const item of matches.slice(0, limit)) state.products.set(item.id, item);
+  return matches.slice(0, limit).map((item) => item.id);
+}
+
 function preloadNextHomepageRound() {
   const round = state.homeCatalogRound;
   if (state.homeCatalogComplete || round === state.homeCatalogPreloadRound) return;
@@ -351,7 +374,8 @@ async function loadHomepageCatalog() {
   state.homeCatalogComplete = false;
   state.homeRecommendationIds = [];
   appendNextHomepageRound();
-  appendNextHomepageRound();
+  const schedulePreload = window.requestIdleCallback || ((callback) => setTimeout(callback, 300));
+  schedulePreload(preloadNextHomepageRound);
 }
 
 function usableResultIds(...groups) {
@@ -703,7 +727,9 @@ async function applyTranscript(transcript) {
     (result.products || []).forEach((item) => state.products.set(item.id, item));
     state.sessionIntent = result.sessionIntent;
     if (state.scene === "recommend") {
+      const catalogIds = rankHomeCatalogForIntent(result.sessionIntent);
       state.recommendationIds = usableResultIds(
+        catalogIds,
         result.resultIds,
         result.nearMatchIds,
         state.previous?.recommendationIds,
@@ -748,7 +774,9 @@ async function rerankCurrentConditions() {
   });
   (result.products || []).forEach((item) => state.products.set(item.id, item));
   if (state.scene === "recommend") {
+    const catalogIds = rankHomeCatalogForIntent(state.sessionIntent);
     state.recommendationIds = usableResultIds(
+      catalogIds,
       result.resultIds,
       result.nearMatchIds,
       state.recommendationIds,
