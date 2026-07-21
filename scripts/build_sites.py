@@ -48,7 +48,19 @@ STATIC_ENGINE = r"""
     "跑鞋": "跑鞋", "运动鞋": "运动鞋", "家居": "家居", "防晒": "防晒霜",
     "防晒霜": "防晒霜", "投影仪": "投影仪", "口红": "口红", "耳机": "耳机",
     "手机": "手机", "咖啡机": "咖啡机", "猫粮": "猫粮", "帐篷": "帐篷",
-    "键盘": "键盘", "香水": "香水", "水果": "水果", "零食": "零食"
+    "键盘": "键盘", "香水": "香水", "水果": "水果", "零食": "零食",
+    "洗衣液": "洗衣液", "洗衣凝珠": "洗衣液", "纸巾": "纸巾", "抽纸": "纸巾",
+    "卫生纸": "纸巾", "牙刷": "电动牙刷", "电动牙刷": "电动牙刷",
+    "洗发水": "洗发水", "洗发露": "洗发水", "吹风机": "吹风机", "电吹风": "吹风机",
+    "扫地机器人": "扫地机器人", "扫地机": "扫地机器人", "电饭煲": "电饭煲",
+    "电饭锅": "电饭煲", "空气炸锅": "空气炸锅", "四件套": "床品", "床品": "床品",
+    "枕头": "枕头", "雨伞": "雨伞", "平板": "平板电脑", "平板电脑": "平板电脑",
+    "笔记本电脑": "笔记本电脑", "电脑": "笔记本电脑", "智能手表": "智能手表",
+    "手表": "智能手表", "音箱": "蓝牙音箱", "音响": "蓝牙音箱", "相机": "相机",
+    "牛仔裤": "牛仔裤", "裤子": "牛仔裤", "衬衫": "衬衫", "衬衣": "衬衫",
+    "外套": "外套", "夹克": "外套", "风衣": "外套", "拖鞋": "拖鞋",
+    "内衣": "内衣", "内裤": "内衣", "面膜": "面膜", "奶粉": "奶粉",
+    "玩具": "玩具", "积木": "玩具", "鱼竿": "鱼竿", "钓鱼竿": "鱼竿"
   };
 
   function normalize(value) {
@@ -178,27 +190,41 @@ STATIC_ENGINE = r"""
     const sourceKey = intentSourceKey(intent) || sourceCondition?.sourceKey;
     const prefix = groupPrefixes[sourceKey];
     const scored = [];
+    const fallbackScored = [];
     for (const item of bootstrap.products) {
       let score = item.baseScore || 0;
+      let fallbackScore = score;
       let blocked = false;
       for (const condition of session) {
         const matches = conditionMatches(item, condition);
         if (condition.operator === "neq" && matches) {
           blocked = true;
-          break;
+          fallbackScore -= 80;
+        } else if (condition.operator === "neq") {
+          fallbackScore += 8;
         }
         if (condition.operator === "lte" && !matches && condition.strength === "hard") {
           blocked = true;
-          break;
+          fallbackScore -= 4;
+        } else if (condition.operator === "lte") {
+          fallbackScore += matches ? 48 : -4;
         }
-        if (condition.operator === "eq") score += matches ? 70 : -12;
+        if (condition.operator === "eq") {
+          score += matches ? 70 : -12;
+          fallbackScore += matches ? 70 : -12;
+        }
       }
-      if (blocked) continue;
-      if (prefix && item.id.startsWith(prefix)) score += 800;
-      scored.push([score, item.id]);
+      if (prefix && item.id.startsWith(prefix)) {
+        score += 800;
+        fallbackScore += 800;
+      }
+      fallbackScored.push([fallbackScore, item.id]);
+      if (!blocked) scored.push([score, item.id]);
     }
     scored.sort((left, right) => right[0] - left[0]);
-    return scored.map((entry) => entry[1]);
+    fallbackScored.sort((left, right) => right[0] - left[0]);
+    const resultIds = (scored.length ? scored : fallbackScored).map((entry) => entry[1]);
+    return resultIds.length ? resultIds : clone(bootstrap.initialRecommendations);
   }
 
   async function staticApi(path, options = {}) {

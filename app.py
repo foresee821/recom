@@ -311,7 +311,6 @@ for group, rows in CASE_PRODUCT_GROUPS.items():
             )
         )
 
-
 def infer_sample_category(title: str) -> tuple[str, list[str]]:
     lowered = title.lower()
     rules = (
@@ -361,9 +360,132 @@ def load_sample_products() -> list[dict[str, Any]]:
 
 
 ODPS_TEST_PRODUCTS = load_sample_products()
-PRODUCTS.extend(ODPS_TEST_PRODUCTS)
+COMMON_CATALOG_GROUPS: dict[str, tuple[str, str, list[tuple[str, int, list[str]]]]] = {
+    "laundry": ("日用", "洗衣液", [
+        ("浓缩除菌洗衣液 家庭大容量装", 69, ["洗衣液", "清洁", "除菌", "大容量"]),
+        ("持久留香洗衣凝珠 三合一盒装", 59, ["洗衣液", "洗衣凝珠", "留香", "便携"]),
+    ]),
+    "tissue": ("日用", "纸巾", [
+        ("柔韧亲肤抽纸 整箱家庭装", 49, ["纸巾", "抽纸", "家庭装"]),
+        ("加厚无芯卷纸 卫生间囤货装", 55, ["纸巾", "卷纸", "卫生纸", "大容量"]),
+    ]),
+    "toothbrush": ("个护", "电动牙刷", [
+        ("声波电动牙刷 五档清洁长续航", 169, ["电动牙刷", "牙刷", "长续航"]),
+        ("软毛护龈电动牙刷 学生便携款", 129, ["电动牙刷", "牙刷", "软毛", "便携"]),
+    ]),
+    "shampoo": ("个护", "洗发水", [
+        ("控油蓬松洗发水 清爽留香", 89, ["洗发水", "洗发露", "控油", "留香"]),
+        ("氨基酸修护洗发水 柔顺套装", 119, ["洗发水", "洗发露", "修护", "套装"]),
+    ]),
+    "dryer": ("个护", "吹风机", [
+        ("高速负离子吹风机 快干护发", 299, ["吹风机", "电吹风", "负离子", "快干"]),
+        ("折叠便携吹风机 宿舍旅行两用", 139, ["吹风机", "电吹风", "折叠", "便携"]),
+    ]),
+    "robotvac": ("家电", "扫地机器人", [
+        ("扫拖一体机器人 自动集尘避障", 1999, ["扫地机器人", "扫地机", "扫拖一体", "智能"]),
+        ("超薄智能扫地机 强力吸尘规划清扫", 1299, ["扫地机器人", "扫地机", "吸尘器", "智能"]),
+    ]),
+    "ricecooker": ("家电", "电饭煲", [
+        ("智能预约电饭煲 多功能家用", 299, ["电饭煲", "电饭锅", "智能", "厨房"]),
+        ("迷你电饭煲 宿舍一人食小容量", 189, ["电饭煲", "电饭锅", "小容量", "宿舍"]),
+    ]),
+    "airfryer": ("家电", "空气炸锅", [
+        ("可视化空气炸锅 大容量低脂烹饪", 399, ["空气炸锅", "厨房", "大容量"]),
+        ("多功能空气炸锅 烘烤一体易清洁", 329, ["空气炸锅", "烘烤", "易清洁"]),
+    ]),
+    "bedding": ("家居", "床品", [
+        ("A类纯棉床品四件套 柔软亲肤", 299, ["床品", "四件套", "床上用品", "纯棉"]),
+        ("奶油色被套床单三件套 宿舍适用", 199, ["床品", "被套", "床单", "浅色"]),
+    ]),
+    "pillow": ("家居", "枕头", [
+        ("慢回弹记忆枕 护颈分区支撑", 159, ["枕头", "枕芯", "记忆枕", "护颈"]),
+        ("五星酒店羽丝绒枕芯 柔软透气", 99, ["枕头", "枕芯", "柔软", "透气"]),
+    ]),
+    "umbrella": ("日用", "雨伞", [
+        ("全自动晴雨伞 防晒防紫外线", 79, ["雨伞", "晴雨伞", "遮阳伞", "防晒"]),
+        ("迷你五折口袋伞 超轻便携", 59, ["雨伞", "折叠伞", "便携", "轻量"]),
+    ]),
+    "tablet": ("数码", "平板电脑", [
+        ("高清大屏平板电脑 学习娱乐轻办公", 1899, ["平板电脑", "平板", "学习", "轻办公"]),
+        ("护眼学习平板 手写笔套装", 1599, ["平板电脑", "平板", "护眼", "套装"]),
+    ]),
+    "laptop": ("电脑", "笔记本电脑", [
+        ("轻薄笔记本电脑 长续航办公本", 3999, ["笔记本电脑", "电脑", "轻薄", "办公"]),
+        ("高性能笔记本电脑 学习设计两用", 4599, ["笔记本电脑", "电脑", "高性能", "学习"]),
+    ]),
+    "smartwatch": ("数码", "智能手表", [
+        ("全天候健康监测智能手表", 699, ["智能手表", "手表", "健康监测", "运动"]),
+        ("轻薄运动手表 GPS长续航", 499, ["智能手表", "运动手表", "GPS", "长续航"]),
+    ]),
+    "speaker": ("数码", "蓝牙音箱", [
+        ("便携蓝牙音箱 户外防水重低音", 239, ["蓝牙音箱", "音箱", "音响", "防水"]),
+        ("桌面无线音箱 氛围灯长续航", 199, ["蓝牙音箱", "音箱", "无线", "氛围"]),
+    ]),
+    "camera": ("数码", "相机", [
+        ("轻量微单相机 旅行人像高清摄影", 4999, ["相机", "微单", "照相机", "旅行"]),
+        ("复古数码相机 自拍美颜便携", 699, ["相机", "数码相机", "自拍", "便携"]),
+    ]),
+    "jeans": ("服饰", "牛仔裤", [
+        ("高腰直筒牛仔裤 显瘦百搭", 169, ["牛仔裤", "裤子", "直筒", "显瘦"]),
+        ("复古水洗宽松牛仔裤 男女同款", 199, ["牛仔裤", "裤子", "宽松", "复古"]),
+    ]),
+    "shirt": ("服饰", "衬衫", [
+        ("纯棉白衬衫 通勤抗皱基础款", 159, ["衬衫", "衬衣", "白色", "通勤"]),
+        ("宽松条纹衬衫 防晒叠穿外搭", 139, ["衬衫", "衬衣", "条纹", "宽松"]),
+    ]),
+    "jacket": ("服饰", "外套", [
+        ("轻薄防风夹克 男女同款", 229, ["外套", "夹克", "轻薄", "防风"]),
+        ("中长款通勤风衣 高级感垂顺", 399, ["外套", "风衣", "通勤", "高级感"]),
+    ]),
+    "slippers": ("鞋靴", "拖鞋", [
+        ("云朵软底居家拖鞋 防滑静音", 39, ["拖鞋", "居家鞋", "软底", "防滑"]),
+        ("轻量凉拖鞋 夏季浴室速干", 29, ["拖鞋", "凉拖", "速干", "轻量"]),
+    ]),
+    "underwear": ("内衣", "内衣", [
+        ("精梳棉内裤 多色组合装", 79, ["内衣", "内裤", "纯棉", "组合装"]),
+        ("无痕轻薄文胸 舒适聚拢", 129, ["内衣", "文胸", "无痕", "轻薄"]),
+    ]),
+    "mask": ("美妆", "面膜", [
+        ("玻尿酸补水面膜 十片装", 89, ["面膜", "补水面膜", "保湿", "套装"]),
+        ("舒缓修护贴片面膜 敏感肌适用", 109, ["面膜", "贴片面膜", "修护", "敏感肌"]),
+    ]),
+    "formula": ("母婴", "奶粉", [
+        ("婴幼儿配方奶粉 科学营养罐装", 299, ["奶粉", "婴儿奶粉", "宝宝奶粉", "营养"]),
+        ("儿童成长奶粉 高钙易吸收", 239, ["奶粉", "儿童奶粉", "高钙", "营养"]),
+    ]),
+    "toy": ("玩具", "玩具", [
+        ("木质绕珠益智玩具 幼儿启蒙", 129, ["玩具", "益智玩具", "儿童玩具", "木质"]),
+        ("大颗粒积木拼装套装 儿童礼物", 159, ["玩具", "积木", "儿童玩具", "礼物"]),
+    ]),
+    "fishing": ("户外", "鱼竿", [
+        ("碳素便携鱼竿 钓鱼入门套装", 259, ["鱼竿", "钓鱼竿", "钓鱼装备", "套装"]),
+        ("轻量路亚竿纺车轮组合", 399, ["鱼竿", "路亚竿", "钓鱼装备", "轻量"]),
+    ]),
+}
 
-PRODUCT_BY_ID = {item["id"]: item for item in PRODUCTS}
+for group, (category, intent_value, rows) in COMMON_CATALOG_GROUPS.items():
+    for index, (title, price, attributes) in enumerate(rows, start=1):
+        PRODUCTS.append(
+            product(
+                f"common-{group}-{index:02d}",
+                title,
+                category,
+                price,
+                "fresh",
+                attributes=[intent_value, *attributes],
+                base_score=65 - index,
+                sales=f"{7 - index}万+人付款",
+                trend=7,
+            )
+        )
+
+DATA_DIR = ROOT / "data"
+TAXONOMY_DATA = json.loads((DATA_DIR / "category_taxonomy.json").read_text(encoding="utf-8"))
+TAXONOMY_CATEGORIES: list[dict[str, str]] = TAXONOMY_DATA["categories"]
+TAXONOMY_CATALOG = json.loads((DATA_DIR / "category_products.json").read_text(encoding="utf-8"))
+TAXONOMY_PRODUCTS: list[dict[str, Any]] = TAXONOMY_CATALOG["products"]
+PRODUCTS.extend(ODPS_TEST_PRODUCTS)
+PRODUCT_BY_ID = {item["id"]: item for item in [*PRODUCTS, *TAXONOMY_PRODUCTS]}
 INITIAL_RECOMMENDATIONS = [item["id"] for item in ODPS_TEST_PRODUCTS] or [
     "fresh-02", "fresh-01", "home-02", "fresh-03", "home-01", "run-01", "fresh-04", "run-03",
     "home-03", "shoe-03", "run-02", "home-04",
@@ -379,6 +501,31 @@ def slot(name: str, operator: str, value: Any, strength: str, label: str) -> dic
 
 
 COMMODITY_INTENTS = [
+    ("洗衣液", "洗衣液", ("洗衣凝珠", "洗衣服用的", "洗涤剂", "洗衣液")),
+    ("纸巾", "纸巾", ("卫生纸", "厕纸", "卷纸", "抽纸", "纸巾")),
+    ("电动牙刷", "电动牙刷", ("刷牙的", "电动牙刷", "牙刷")),
+    ("洗发水", "洗发水", ("洗头膏", "洗发露", "洗发水")),
+    ("吹风机", "吹风机", ("吹头发的", "电吹风", "吹风机")),
+    ("扫地机器人", "扫地机器人", ("机器人吸尘器", "扫地机器人", "扫地机")),
+    ("电饭煲", "电饭煲", ("煮饭锅", "电饭锅", "电饭煲")),
+    ("空气炸锅", "空气炸锅", ("空气炸锅", "炸锅")),
+    ("床品", "床上用品", ("床上四件套", "床上用品", "四件套", "被套", "床单", "床品")),
+    ("枕头", "枕头", ("记忆枕", "枕芯", "枕头")),
+    ("雨伞", "雨伞", ("晴雨伞", "遮阳伞", "折叠伞", "雨伞")),
+    ("平板电脑", "平板电脑", ("平板电脑", "学习平板", "ipad", "iPad", "平板")),
+    ("笔记本电脑", "笔记本电脑", ("笔记本电脑", "手提电脑", "笔记本", "电脑")),
+    ("智能手表", "智能手表", ("运动手表", "智能手表", "手表")),
+    ("蓝牙音箱", "蓝牙音箱", ("便携音响", "蓝牙音箱", "音响", "音箱")),
+    ("相机", "相机", ("数码相机", "照相机", "摄像机", "微单", "相机")),
+    ("牛仔裤", "牛仔裤", ("牛仔长裤", "牛仔裤", "裤子")),
+    ("衬衫", "衬衫", ("白衬衫", "衬衣", "衬衫")),
+    ("外套", "外套", ("防晒衣", "夹克", "风衣", "外套")),
+    ("拖鞋", "拖鞋", ("居家鞋", "凉拖", "拖鞋")),
+    ("内衣", "内衣", ("文胸", "内裤", "内衣")),
+    ("面膜", "面膜", ("补水面膜", "贴片面膜", "面膜")),
+    ("奶粉", "奶粉", ("婴儿奶粉", "宝宝奶粉", "儿童奶粉", "奶粉")),
+    ("玩具", "玩具", ("儿童玩具", "益智玩具", "积木", "玩具")),
+    ("鱼竿", "鱼竿", ("钓鱼装备", "钓鱼竿", "路亚竿", "鱼竿")),
     ("防晒霜", "防晒霜", ("防晒喷雾", "防晒乳", "防晒霜", "防晒")),
     ("投影仪", "投影仪", ("智能投影仪", "家用投影仪", "投影仪")),
     ("瑜伽垫", "瑜伽垫", ("健身垫", "瑜伽垫")),
@@ -670,6 +817,89 @@ DIRECT_PRODUCT_TERMS = tuple(
 )
 
 NEGATIVE_WORDS = ("不要", "不想", "别推", "别给我推", "少点", "少看", "减少", "排除", "看腻", "烦")
+GENERIC_TAXONOMY_ALIASES = {
+    "其他", "其它", "配件", "耗材", "配件耗材", "其他类", "其它类",
+    "周边", "服务", "用品", "套装", "护理", "治疗",
+}
+TAXONOMY_SPEECH_SYNONYMS = {
+    "吹风机": "电吹风",
+    "扫地机器人": "扫地机及配件耗材",
+    "扫地机": "扫地机及配件耗材",
+    "体脂秤": "体重秤/健康秤/体脂秤",
+    "健康秤": "体重秤/健康秤/体脂秤",
+    "水杯": "杯子/水杯/水壶",
+    "杯子": "杯子/水杯/水壶",
+    "奶粉": "婴童奶粉",
+    "宝宝奶粉": "婴童奶粉",
+    "口腔护理": "口腔治疗/护理",
+}
+
+
+def normalize_taxonomy_text(value: str) -> str:
+    return re.sub(r"[\s，。！？、,.!?“”\"'：:；;·\-—_]+", "", value).lower()
+
+
+def taxonomy_aliases(name: str) -> set[str]:
+    aliases = {normalize_taxonomy_text(name)}
+    aliases.update(
+        normalize_taxonomy_text(part)
+        for part in re.split(r"[/／、|（）()]", name)
+    )
+    return {
+        alias
+        for alias in aliases
+        if len(alias) >= 2 and alias not in GENERIC_TAXONOMY_ALIASES
+    }
+
+
+TAXONOMY_PARENT_NAMES = sorted(
+    {item["xcat1"] for item in TAXONOMY_CATEGORIES},
+    key=lambda value: (-len(value), value),
+)
+TAXONOMY_SECONDARY_BY_ALIAS: dict[str, list[dict[str, str]]] = {}
+for category in TAXONOMY_CATEGORIES:
+    for alias in taxonomy_aliases(category["xcat2"]):
+        TAXONOMY_SECONDARY_BY_ALIAS.setdefault(alias, []).append(category)
+for spoken_alias, xcat2 in TAXONOMY_SPEECH_SYNONYMS.items():
+    for category in TAXONOMY_CATEGORIES:
+        if category["xcat2"] == xcat2:
+            TAXONOMY_SECONDARY_BY_ALIAS.setdefault(
+                normalize_taxonomy_text(spoken_alias),
+                [],
+            ).append(category)
+TAXONOMY_SECONDARY_ALIASES = sorted(
+    TAXONOMY_SECONDARY_BY_ALIAS,
+    key=lambda value: (-len(value), value),
+)
+
+
+def match_taxonomy_intent(text: str) -> dict[str, str] | None:
+    normalized = normalize_taxonomy_text(text)
+    matched_parent = next(
+        (
+            parent
+            for parent in TAXONOMY_PARENT_NAMES
+            if normalize_taxonomy_text(parent) in normalized
+        ),
+        None,
+    )
+    matched_alias = next(
+        (alias for alias in TAXONOMY_SECONDARY_ALIASES if alias in normalized),
+        None,
+    )
+    if matched_alias:
+        candidates = TAXONOMY_SECONDARY_BY_ALIAS[matched_alias]
+        if matched_parent:
+            parent_candidate = next(
+                (item for item in candidates if item["xcat1"] == matched_parent),
+                None,
+            )
+            if parent_candidate:
+                return {**parent_candidate, "evidence": matched_alias}
+        return {**candidates[0], "evidence": matched_alias}
+    if matched_parent:
+        return {"xcat1": matched_parent, "xcat2": "", "evidence": matched_parent}
+    return None
 
 
 def extract_alias_slots(
@@ -750,22 +980,109 @@ def parse_intent(transcript: str) -> dict[str, Any]:
     hard = any(word in text for word in ("必须", "只要", "只看", "不超过", "以内", "一定要"))
     strength = "hard" if hard else "soft"
 
+    taxonomy_match = match_taxonomy_intent(text)
+    taxonomy_slots: list[dict[str, Any]] = []
     catalog_slots = extract_alias_slots(text, strength, COMMODITY_INTENTS, "category")
+    specific_catalog_values = {
+        item["value"]
+        for item in catalog_slots
+        if item["value"] not in {"家居", "母婴"}
+    }
+    if specific_catalog_values:
+        if "家里" in text and "家居" not in text:
+            catalog_slots = [item for item in catalog_slots if item["value"] != "家居"]
+        if "宝宝" in text and not any(term in text for term in ("宝宝用品", "母婴")):
+            catalog_slots = [item for item in catalog_slots if item["value"] != "母婴"]
     attribute_slots = extract_alias_slots(text, strength, ATTRIBUTE_INTENTS, "attribute")
     audience_slots = extract_alias_slots(text, strength, AUDIENCE_INTENTS, "audience")
     style_slots = extract_alias_slots(text, strength, STYLE_INTENTS, "style")
     brand_slots = extract_alias_slots(text, strength, BRAND_INTENTS, "brand")
-    product_slots = catalog_slots + attribute_slots + audience_slots + style_slots + brand_slots
+    positive_catalog_slots = [
+        item for item in catalog_slots if item["operator"] == "eq"
+    ]
+    broad_catalog_values = {
+        "家居", "户外", "办公", "穿搭", "食品", "宠物", "母婴",
+        "数码", "家电", "女装",
+    }
+    taxonomy_active = bool(taxonomy_match)
+    if taxonomy_match and taxonomy_match["xcat2"] and catalog_slots:
+        normalized_xcat2 = normalize_taxonomy_text(taxonomy_match["xcat2"])
+        compatible_values = [
+            item["value"]
+            for item in positive_catalog_slots
+            if (
+                normalize_taxonomy_text(str(item["value"])) in normalized_xcat2
+                or normalized_xcat2 in normalize_taxonomy_text(str(item["value"]))
+                or normalize_taxonomy_text(str(item["value"]))
+                == normalize_taxonomy_text(taxonomy_match["evidence"])
+            )
+        ]
+        taxonomy_active = (
+            len(positive_catalog_slots) == 1
+            and not any(item["operator"] == "neq" for item in catalog_slots)
+            and bool(compatible_values)
+            and compatible_values[0] not in broad_catalog_values
+            and not brand_slots
+        )
+    if taxonomy_match and taxonomy_active:
+        evidence = normalize_taxonomy_text(taxonomy_match["evidence"])
+        normalized_text = normalize_taxonomy_text(text)
+        taxonomy_negative = any(
+            normalize_taxonomy_text(f"{word}{evidence}") in normalized_text
+            for word in NEGATIVE_WORDS
+        )
+        taxonomy_operator = "neq" if taxonomy_negative else "eq"
+        taxonomy_slots.append(
+            slot(
+                "xcat1",
+                "eq" if taxonomy_match["xcat2"] else taxonomy_operator,
+                taxonomy_match["xcat1"],
+                strength,
+                taxonomy_match["xcat1"],
+            )
+        )
+        if taxonomy_match["xcat2"]:
+            taxonomy_slots.append(
+                slot(
+                    "xcat2",
+                    taxonomy_operator,
+                    taxonomy_match["xcat2"],
+                    strength,
+                    (
+                        f"减少{taxonomy_match['xcat2']}"
+                        if taxonomy_negative
+                        else taxonomy_match["xcat2"]
+                    ),
+                )
+            )
+    product_slots = (
+        catalog_slots
+        + attribute_slots
+        + audience_slots
+        + style_slots
+        + brand_slots
+        + taxonomy_slots
+    )
 
+    explicit_direct_product_terms = {
+        term for term in DIRECT_PRODUCT_TERMS if term.lower() in text.lower()
+    }
     direct_product_terms = sorted(
-        {term for term in DIRECT_PRODUCT_TERMS if term.lower() in text.lower()},
+        {
+            *explicit_direct_product_terms,
+            *(
+                {taxonomy_match["evidence"]}
+                if taxonomy_match and taxonomy_active and taxonomy_match["xcat2"]
+                else set()
+            ),
+        },
         key=len,
         reverse=True,
     )
     explore_definition = match_intent_definition(text, EXPLORE_INTENTS)
     scenario_definition = match_intent_definition(text, SCENARIO_INTENTS)
 
-    if explore_definition and not direct_product_terms:
+    if explore_definition and not explicit_direct_product_terms:
         explore_slot = slot("attribute", "eq", "新鲜感", "soft", explore_definition["label"])
         explore_slot.update({"sourceMode": "explore", "sourceKey": explore_definition["key"]})
         return {
@@ -785,7 +1102,7 @@ def parse_intent(transcript: str) -> dict[str, Any]:
             ),
         }
 
-    if scenario_definition and not direct_product_terms:
+    if scenario_definition and not explicit_direct_product_terms:
         scenario_slots = []
         for target in scenario_definition["targets"]:
             target_slot = slot("category", "eq", target, "soft", target)
@@ -853,9 +1170,19 @@ def parse_intent(transcript: str) -> dict[str, Any]:
             "slots": slots,
             "scope": "session",
             "transcript": transcript,
+            **(
+                {
+                    "taxonomy": {
+                        "xcat1": taxonomy_match["xcat1"],
+                        "xcat2": taxonomy_match["xcat2"] or None,
+                    }
+                }
+                if taxonomy_match and taxonomy_active
+                else {}
+            ),
             **mode_payload(
                 "product",
-                confidence=0.92 if catalog_slots else 0.84,
+                confidence=0.96 if taxonomy_match else 0.92 if catalog_slots else 0.84,
                 evidence=evidence[:4],
                 route_name="constraint_ranking",
                 route_label="商品约束排序",
@@ -905,9 +1232,21 @@ def merge_conditions(existing: list[dict[str, Any]], intent: dict[str, Any]) -> 
 
 
 def product_contains_value(product_item: dict[str, Any], value: Any) -> bool:
+    normalized_value = normalize_taxonomy_text(value) if isinstance(value, str) else ""
+    attribute_match = value in product_item["attributes"]
+    if (
+        product_item["id"].startswith("tax-")
+        and normalized_value
+        and len(normalized_value) >= 2
+    ):
+        attribute_match = attribute_match or any(
+            normalized_value in normalize_taxonomy_text(attribute)
+            for attribute in product_item["attributes"]
+            if isinstance(attribute, str)
+        )
     return (
         product_item["category"] == value
-        or value in product_item["attributes"]
+        or attribute_match
         or value in product_item["audiences"]
         or value in product_item["styles"]
         or value in product_item["goals"]
@@ -922,7 +1261,11 @@ def product_matches(product_item: dict[str, Any], condition: dict[str, Any]) -> 
         return product_item["price"] <= value if operator == "lte" else product_item["price"] >= value
     if name == "priceOrder":
         return True
-    if name == "category":
+    if name == "xcat1":
+        present = product_item.get("xcat1") == value
+    elif name == "xcat2":
+        present = product_item.get("xcat2") == value
+    elif name == "category":
         present = product_contains_value(product_item, value)
         if value == "家居":
             present = present or product_item["category"] == "收纳"
@@ -940,8 +1283,16 @@ def product_matches(product_item: dict[str, Any], condition: dict[str, Any]) -> 
 def rank_product_results(scene: str, conditions: list[dict[str, Any]]) -> dict[str, list[str]]:
     scored: list[tuple[float, dict[str, Any]]] = []
     hard = [item for item in conditions if item["strength"] == "hard"]
-    for item in PRODUCTS:
-        if scene == "search" and not all(tag in item["attributes"] for tag in ("男款", "白色", "运动鞋")):
+    taxonomy_conditions = [
+        item for item in conditions if item["name"] in ("xcat1", "xcat2")
+    ]
+    candidates = TAXONOMY_PRODUCTS if taxonomy_conditions else PRODUCTS
+    for item in candidates:
+        if (
+            scene == "search"
+            and not taxonomy_conditions
+            and not all(tag in item["attributes"] for tag in ("男款", "白色", "运动鞋"))
+        ):
             continue
         score = float(item["baseScore"])
         for condition in conditions:
@@ -954,6 +1305,8 @@ def rank_product_results(scene: str, conditions: list[dict[str, Any]]) -> dict[s
                 score += 35 if matches else -120
             elif condition["operator"] == "neq":
                 score += 8 if matches else -55
+            elif condition["name"] in ("category", "xcat1", "xcat2"):
+                score += 90 if matches else -10
             else:
                 score += 48 if matches else -4
         if any(condition["value"] == "新鲜感" for condition in conditions):
@@ -961,7 +1314,12 @@ def rank_product_results(scene: str, conditions: list[dict[str, Any]]) -> dict[s
         scored.append((score, item))
 
     scored.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
-    exact = [item["id"] for _, item in scored if all(product_matches(item, condition) for condition in hard)]
+    exact_requirements = [*hard, *taxonomy_conditions]
+    exact = [
+        item["id"]
+        for _, item in scored
+        if all(product_matches(item, condition) for condition in exact_requirements)
+    ]
     positive_categories = [
         condition
         for condition in conditions
@@ -985,6 +1343,43 @@ def rank_product_results(scene: str, conditions: list[dict[str, Any]]) -> dict[s
                 break
         exact = interleaved + remaining
     near = [item["id"] for _, item in scored if item["id"] not in exact]
+    positive_xcat1 = next(
+        (
+            condition
+            for condition in taxonomy_conditions
+            if condition["name"] == "xcat1" and condition["operator"] == "eq"
+        ),
+        None,
+    )
+    positive_xcat2 = any(
+        condition["name"] == "xcat2" and condition["operator"] == "eq"
+        for condition in taxonomy_conditions
+    )
+    if positive_xcat1 and not positive_xcat2:
+        remaining = list(exact)
+        child_names = list(dict.fromkeys(PRODUCT_BY_ID[item_id]["xcat2"] for item_id in remaining))
+        interleaved = []
+        while remaining:
+            added = False
+            for child_name in child_names:
+                next_id = next(
+                    (
+                        item_id
+                        for item_id in remaining
+                        if PRODUCT_BY_ID[item_id]["xcat2"] == child_name
+                    ),
+                    None,
+                )
+                if next_id is not None:
+                    remaining.remove(next_id)
+                    interleaved.append(next_id)
+                    added = True
+            if not added:
+                break
+        exact = interleaved
+    if taxonomy_conditions:
+        exact = exact[:80]
+        near = near[:30]
     return {"exact": exact, "near": near}
 
 
@@ -1144,6 +1539,39 @@ def rank_results(
     return rank_product_results(scene, conditions)
 
 
+def rank_results_for_display(
+    scene: str,
+    conditions: list[dict[str, Any]],
+    intent: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    ranked = rank_results(scene, conditions, intent)
+    response: dict[str, Any] = {**ranked, "fallbackApplied": False}
+    if scene != "recommend" or ranked["exact"]:
+        return response
+
+    softened_conditions = [
+        {
+            **condition,
+            "strength": "soft" if condition["strength"] == "hard" else condition["strength"],
+        }
+        for condition in conditions
+    ]
+    relaxed = (
+        rank_results(scene, softened_conditions, intent)
+        if softened_conditions != conditions
+        else ranked
+    )
+    fallback_ids = (
+        relaxed["exact"]
+        or relaxed["near"]
+        or ranked["near"]
+        or INITIAL_RECOMMENDATIONS
+    )
+    response["exact"] = list(dict.fromkeys(fallback_ids))[:80]
+    response["fallbackApplied"] = True
+    return response
+
+
 def feedback_for(intent: dict[str, Any]) -> str:
     if intent["type"] == "unknown":
         return "我还没听懂。可以说具体商品、要完成的场景，或想探索的新灵感。"
@@ -1155,9 +1583,26 @@ def feedback_for(intent: dict[str, Any]) -> str:
         return f"已将“{scenario['label']}”拆成：{'、'.join(scenario['targets'])}"
     if intent["mode"] == "explore":
         return f"已进入{intent['route']['label']}，增加新鲜度、趋势性和跨品类灵感"
+    if intent.get("taxonomy"):
+        taxonomy = intent["taxonomy"]
+        path = taxonomy["xcat1"]
+        if taxonomy.get("xcat2"):
+            path += f" › {taxonomy['xcat2']}"
+        return f"已定位品类：{path}"
     if labels:
         return f"已应用：{' · '.join(labels)}"
     return "已理解你的即时意图"
+
+
+def products_for_ranked_results(ranked: dict[str, list[str]]) -> list[dict[str, Any]]:
+    result_ids = list(ranked["exact"][:20])
+    if len(ranked["exact"]) < 3:
+        result_ids.extend(ranked["near"][:6])
+    return [
+        PRODUCT_BY_ID[item_id]
+        for item_id in dict.fromkeys(result_ids)
+        if item_id.startswith("tax-")
+    ]
 
 
 def bootstrap_payload() -> dict[str, Any]:
@@ -1227,7 +1672,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
                     raise ValueError("sessionIntent 必须是数组")
                 intent = parse_intent(transcript)
                 conditions = merge_conditions(existing, intent)
-                ranked = rank_results(scene, conditions, intent)
+                ranked = rank_results_for_display(scene, conditions, intent)
                 engine = {
                     "mode": intent["mode"],
                     "modeLabel": intent["modeLabel"],
@@ -1241,6 +1686,8 @@ class DemoHandler(SimpleHTTPRequestHandler):
                     "sessionIntent": conditions,
                     "resultIds": ranked["exact"],
                     "nearMatchIds": ranked["near"],
+                    "products": products_for_ranked_results(ranked),
+                    "fallbackApplied": ranked["fallbackApplied"],
                     "feedback": feedback_for(intent),
                 })
                 return

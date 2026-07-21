@@ -48,8 +48,6 @@ const state = {
   stopAfterStart: false,
   cancelOnStart: false,
   ignoreNextAbort: false,
-  demoVoiceMode: false,
-  demoVoiceTimer: null,
   transcript: "",
 };
 
@@ -132,6 +130,27 @@ function caseSpriteFor(productId) {
   };
 }
 
+const commonSpriteGroups = [
+  "laundry", "tissue", "toothbrush", "shampoo", "dryer",
+  "robotvac", "ricecooker", "airfryer", "bedding", "pillow",
+  "umbrella", "tablet", "laptop", "smartwatch", "speaker",
+  "camera", "jeans", "shirt", "jacket", "slippers",
+  "underwear", "mask", "formula", "toy", "fishing",
+];
+
+function commonSpriteFor(productId) {
+  const match = /^common-([a-z]+)-\d{2}$/.exec(productId);
+  if (!match) return null;
+  const index = commonSpriteGroups.indexOf(match[1]);
+  if (index < 0) return null;
+  const column = index % 5;
+  const row = Math.floor(index / 5);
+  return {
+    image: "assets/common-products-v1.png",
+    position: `${column * 25}% ${row * 25}%`,
+  };
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json" },
@@ -159,6 +178,8 @@ function productReasons(item) {
       return item.category === condition.value || item.attributes.includes(condition.value) ||
         (condition.value === "家居" && item.category === "收纳");
     }
+    if (condition.name === "xcat1") return item.xcat1 === condition.value;
+    if (condition.name === "xcat2") return item.xcat2 === condition.value;
     if (condition.name === "style") return item.styles?.includes(condition.value);
     if (condition.name === "audience") return item.audiences?.includes(condition.value);
     if (condition.name === "brand") return item.brand === condition.value;
@@ -172,8 +193,11 @@ function productCard(item, index, isNear = false) {
   const tags = reasons.length ? reasons : item.attributes.slice(0, 1);
   const spritePanel = productSpritePanels[item.id];
   const caseSprite = caseSpriteFor(item.id);
+  const commonSprite = commonSpriteFor(item.id);
   const image = caseSprite
     ? `<div class="product-image product-photo case-product" style="--case-image:url('${caseSprite.image}');--case-position:${caseSprite.position}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
+    : commonSprite
+    ? `<div class="product-image product-photo common-product" style="--common-image:url('${commonSprite.image}');--common-position:${commonSprite.position}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
     : spritePanel
     ? `<div class="product-image product-photo ${spritePanel}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
     : `<img class="product-image" src="${item.image.replace(/^\/assets\//, "assets/")}" alt="${escapeHtml(item.title)}" />`;
@@ -192,6 +216,14 @@ function productCard(item, index, isNear = false) {
 function renderGrid(container, ids, isNear = false) {
   const uniqueIds = [...new Set(ids)].filter((id) => state.products.has(id)).slice(0, isNear ? 6 : 20);
   container.innerHTML = uniqueIds.map((id, index) => productCard(state.products.get(id), index, isNear)).join("");
+}
+
+function usableResultIds(...groups) {
+  for (const ids of groups) {
+    const usable = [...new Set(ids || [])].filter((id) => state.products.has(id));
+    if (usable.length > 0) return usable;
+  }
+  return [];
 }
 
 function renderProducts() {
@@ -354,7 +386,6 @@ function openVoice(autoListen = false) {
 }
 
 function closeVoice() {
-  clearTimeout(state.demoVoiceTimer);
   stopListening(false);
   els.voiceSheet.hidden = true;
 }
@@ -389,7 +420,7 @@ function createRecognition() {
   };
   recognition.onresult = (event) => {
     let value = "";
-    for (let i = event.resultIndex; i < event.results.length; i += 1) value += event.results[i][0].transcript;
+    for (let i = 0; i < event.results.length; i += 1) value += event.results[i][0].transcript;
     state.transcript = value.trim();
     els.transcript.textContent = state.transcript || "我在听…";
   };
@@ -419,7 +450,7 @@ function createRecognition() {
     };
     const message = messages[event.error] || `语音识别失败（${event.error || "未知错误"}）`;
     if (["not-allowed", "service-not-allowed", "network", "audio-capture"].includes(event.error)) {
-      enableDemoVoice(message);
+      showSpeechUnavailable(message);
     } else {
       els.transcript.textContent = message;
     }
@@ -442,11 +473,8 @@ function createRecognition() {
 function setListeningUI(listening) {
   els.wave.classList.toggle("listening", listening);
   els.holdButton.classList.toggle("is-listening", listening);
-  els.holdButton.classList.toggle("is-demo", state.demoVoiceMode);
   const strong = els.holdButton.querySelector("strong");
-  if (state.demoVoiceMode) {
-    strong.textContent = listening ? "演示聆听中" : "演示识别";
-  } else if (listening) {
+  if (listening) {
     strong.textContent = state.submitOnEnd ? "再点一次结束" : "正在聆听";
   } else {
     strong.textContent = "按住或轻点";
@@ -459,8 +487,7 @@ function setMicrophonePendingUI() {
   els.holdButton.querySelector("strong").textContent = "等待麦克风";
 }
 
-function enableDemoVoice(reason) {
-  state.demoVoiceMode = true;
+function showSpeechUnavailable(reason) {
   state.listening = false;
   state.recognitionPending = false;
   state.recognitionStarted = false;
@@ -468,34 +495,14 @@ function enableDemoVoice(reason) {
   state.cancelOnStart = false;
   state.recognition = null;
   setListeningUI(false);
-  els.transcript.textContent = `${reason}。可点击“演示识别”走完整流程。`;
-}
-
-function runDemoVoice() {
-  if (state.listening) return;
-  state.listening = true;
-  setListeningUI(true);
-  els.transcript.textContent = "演示识别中…";
-  const phrase = state.bootstrap.examples[state.scene][0];
-  clearTimeout(state.demoVoiceTimer);
-  state.demoVoiceTimer = setTimeout(() => {
-    state.listening = false;
-    state.transcript = phrase;
-    setListeningUI(false);
-    els.transcript.textContent = `演示转写：“${phrase}”`;
-    state.demoVoiceTimer = setTimeout(() => applyTranscript(phrase), 650);
-  }, 900);
+  els.transcript.textContent = `${reason}。请使用 Chrome、Edge 或 Safari，并允许麦克风权限；也可以改用下方文字输入。`;
 }
 
 function startListening() {
-  if (state.demoVoiceMode) {
-    runDemoVoice();
-    return;
-  }
   if (state.listening || state.recognitionPending) return;
   state.recognition ||= createRecognition();
   if (!state.recognition) {
-    enableDemoVoice("当前浏览器不支持网页语音识别");
+    showSpeechUnavailable("当前浏览器不支持网页语音识别");
     return;
   }
   state.recognitionPending = true;
@@ -515,12 +522,11 @@ function startListening() {
     state.recognition = null;
     setListeningUI(false);
     const denied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
-    enableDemoVoice(denied ? "麦克风权限未开放" : "无法启动麦克风");
+    showSpeechUnavailable(denied ? "麦克风权限未开放" : "无法启动麦克风");
   }
 }
 
 function stopListening(shouldApply = true) {
-  if (state.demoVoiceMode) return;
   state.submitOnEnd = shouldApply;
   if (state.recognitionPending) {
     if (shouldApply) state.stopAfterStart = true;
@@ -556,9 +562,15 @@ async function applyTranscript(transcript) {
       els.transcript.textContent = result.feedback;
       return;
     }
+    (result.products || []).forEach((item) => state.products.set(item.id, item));
     state.sessionIntent = result.sessionIntent;
     if (state.scene === "recommend") {
-      state.recommendationIds = result.resultIds;
+      state.recommendationIds = usableResultIds(
+        result.resultIds,
+        result.nearMatchIds,
+        state.previous?.recommendationIds,
+        state.bootstrap.initialRecommendations,
+      );
       els.subtitle.textContent = "已融合你刚刚表达的即时意图";
     } else {
       state.searchIds = result.resultIds;
@@ -594,7 +606,15 @@ async function rerankCurrentConditions() {
     method: "POST",
     body: JSON.stringify({ scene: state.scene, transcript: "保持当前条件", sessionIntent: state.sessionIntent }),
   });
-  if (state.scene === "recommend") state.recommendationIds = result.resultIds;
+  (result.products || []).forEach((item) => state.products.set(item.id, item));
+  if (state.scene === "recommend") {
+    state.recommendationIds = usableResultIds(
+      result.resultIds,
+      result.nearMatchIds,
+      state.recommendationIds,
+      state.bootstrap.initialRecommendations,
+    );
+  }
   else {
     state.searchIds = result.resultIds;
     state.nearIds = result.resultIds.length < 3 ? result.nearMatchIds : [];
@@ -646,14 +666,10 @@ function bindEvents() {
     event.preventDefault();
     voicePressStartedAt = Date.now();
     listeningBeforePress = state.listening || state.recognitionPending;
-    if (!listeningBeforePress && !state.demoVoiceMode) startListening();
+    if (!listeningBeforePress) startListening();
   });
   els.holdButton.addEventListener("pointerup", (event) => {
     event.preventDefault();
-    if (state.demoVoiceMode) {
-      runDemoVoice();
-      return;
-    }
     if (listeningBeforePress || Date.now() - voicePressStartedAt >= 650) {
       stopListening(true);
       return;

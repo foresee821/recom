@@ -1,4 +1,5 @@
 import unittest
+from collections import Counter
 from pathlib import Path
 
 import app
@@ -110,6 +111,26 @@ class IntentParserTests(unittest.TestCase):
                 intent = app.parse_intent(transcript)
                 self.assertIn(("category", "eq", expected), self._slot_values(intent))
 
+    def test_expanded_common_catalog_aliases_are_understood(self):
+        cases = {
+            "家里抽纸用完了": "纸巾",
+            "想买个吹头发的": "吹风机",
+            "推荐一个煮饭锅": "电饭煲",
+            "给我看看扫地机": "扫地机器人",
+            "需要一台学习平板": "平板电脑",
+            "想买手提电脑": "笔记本电脑",
+            "有没有便携音响": "蓝牙音箱",
+            "想看看裤子": "牛仔裤",
+            "买一件防晒衣": "外套",
+            "给宝宝买奶粉": "奶粉",
+            "新手钓鱼用什么鱼竿": "鱼竿",
+        }
+
+        for transcript, expected in cases.items():
+            with self.subTest(transcript=transcript):
+                intent = app.parse_intent(transcript)
+                self.assertIn(("category", "eq", expected), self._slot_values(intent))
+
     def test_multiple_positive_and_negative_categories_can_coexist(self):
         intent = app.parse_intent("不要零食，想看蓝牙耳机和水杯")
         values = self._slot_values(intent)
@@ -146,6 +167,26 @@ class IntentParserTests(unittest.TestCase):
 
 
 class RankingTests(unittest.TestCase):
+    def test_recognized_home_intent_never_returns_an_empty_feed(self):
+        for transcript, expected_value in (
+            ("只看OTC药品，50元以内", "OTC药品"),
+            ("只看电吹风，50元以内", "吹风机"),
+        ):
+            with self.subTest(transcript=transcript):
+                intent = app.parse_intent(transcript)
+                conditions = app.merge_conditions([], intent)
+                ranked = app.rank_results_for_display("recommend", conditions, intent)
+
+                self.assertTrue(ranked["fallbackApplied"])
+                self.assertGreater(len(ranked["exact"]), 0)
+                self.assertTrue(
+                    any(
+                        app.product_contains_value(app.PRODUCT_BY_ID[item_id], expected_value)
+                        for item_id in ranked["exact"][:10]
+                    ),
+                    ranked["exact"][:10],
+                )
+
     def test_home_intent_pushes_home_items_ahead_of_running_shoes(self):
         intent = app.parse_intent("少点跑鞋，多看看家居")
         ranked = app.rank_results("recommend", intent["slots"])["exact"]
@@ -428,8 +469,126 @@ class RankingTests(unittest.TestCase):
             "https://img.alicdn.com/imgextra/i1/2212055986062/O1CN01dE8O381ueS4RGLaUZ_!!4611686018427383694-0-item_pic.jpg",
         )
 
+    def test_common_catalog_has_two_products_and_local_sprite_for_each_group(self):
+        self.assertGreaterEqual(len(app.PRODUCTS), 246)
+        for group, (_, intent_value, _) in app.COMMON_CATALOG_GROUPS.items():
+            with self.subTest(group=group):
+                matching_ids = [
+                    item["id"]
+                    for item in app.PRODUCTS
+                    if item["id"].startswith(f"common-{group}-")
+                    and app.product_contains_value(item, intent_value)
+                ]
+                self.assertEqual(len(matching_ids), 2)
+
+        asset = app.STATIC_DIR / "assets" / "common-products-v1.png"
+        self.assertTrue(asset.is_file())
+        self.assertGreater(asset.stat().st_size, 100_000)
+
+    def test_specific_common_product_stays_ahead_of_context_and_audience_words(self):
+        cases = {
+            "家里抽纸用完了": "纸巾",
+            "给宝宝买奶粉": "奶粉",
+            "新手钓鱼用什么鱼竿": "鱼竿",
+        }
+
+        for transcript, expected_value in cases.items():
+            with self.subTest(transcript=transcript):
+                intent = app.parse_intent(transcript)
+                ranked = app.rank_results("recommend", intent["slots"], intent)["exact"][:2]
+                self.assertTrue(
+                    all(
+                        app.product_contains_value(app.PRODUCT_BY_ID[item_id], expected_value)
+                        for item_id in ranked
+                    ),
+                    ranked,
+                )
+
+
+class TaxonomyCatalogTests(unittest.TestCase):
+    def test_excel_taxonomy_generates_ten_products_per_category_pair(self):
+        counts = Counter(
+            (item["xcat1"], item["xcat2"])
+            for item in app.TAXONOMY_PRODUCTS
+        )
+
+        self.assertEqual(len(app.TAXONOMY_PARENT_NAMES), 148)
+        self.assertEqual(len(app.TAXONOMY_CATEGORIES), 1341)
+        self.assertEqual(len(app.TAXONOMY_PRODUCTS), 13410)
+        self.assertEqual(len(counts), 1341)
+        self.assertEqual(set(counts.values()), {10})
+
+    def test_spoken_product_maps_to_excel_primary_and_secondary_categories(self):
+        cases = {
+            "想买个吹风机": ("个人护理", "电吹风"),
+            "我想买水杯": ("厨房餐饮具", "杯子/水杯/水壶"),
+            "给我推荐连衣裙": ("女装", "连衣裙"),
+            "想买电饭煲": ("中式厨房", "电饭煲"),
+        }
+
+        for transcript, expected in cases.items():
+            with self.subTest(transcript=transcript):
+                intent = app.parse_intent(transcript)
+                self.assertEqual(
+                    (intent["taxonomy"]["xcat1"], intent["taxonomy"]["xcat2"]),
+                    expected,
+                )
+
+    def test_ambiguous_secondary_uses_spoken_primary_category(self):
+        intent = app.parse_intent("厨房餐饮具里的餐具")
+
+        self.assertEqual(intent["taxonomy"]["xcat1"], "厨房餐饮具")
+        self.assertEqual(intent["taxonomy"]["xcat2"], "餐具")
+
+    def test_primary_category_only_returns_diverse_secondary_categories(self):
+        intent = app.parse_intent("看看个人护理")
+        ranked = app.rank_results("recommend", intent["slots"], intent)["exact"][:10]
+        items = [app.PRODUCT_BY_ID[item_id] for item_id in ranked]
+
+        self.assertEqual(intent["taxonomy"], {"xcat1": "个人护理", "xcat2": None})
+        self.assertTrue(all(item["xcat1"] == "个人护理" for item in items))
+        self.assertGreaterEqual(len({item["xcat2"] for item in items}), 8)
+
+    def test_secondary_category_returns_its_ten_concrete_products(self):
+        intent = app.parse_intent("想买个吹风机")
+        ranked = app.rank_results("recommend", intent["slots"], intent)["exact"]
+        items = [app.PRODUCT_BY_ID[item_id] for item_id in ranked]
+
+        self.assertEqual(len(items), 10)
+        self.assertTrue(all(item["xcat1"] == "个人护理" for item in items))
+        self.assertTrue(all(item["xcat2"] == "电吹风" for item in items))
+
+    def test_price_follow_up_keeps_taxonomy_category(self):
+        category_intent = app.parse_intent("想买电饭煲")
+        session = app.merge_conditions([], category_intent)
+        price_intent = app.parse_intent("500元以内")
+        session = app.merge_conditions(session, price_intent)
+        ranked = app.rank_results("recommend", session, price_intent)["exact"]
+        items = [app.PRODUCT_BY_ID[item_id] for item_id in ranked]
+
+        self.assertGreater(len(items), 0)
+        self.assertTrue(all(item["xcat2"] == "电饭煲" for item in items))
+        self.assertTrue(all(item["price"] <= 500 for item in items))
+
+    def test_api_can_return_dynamic_products_without_bloating_bootstrap(self):
+        intent = app.parse_intent("给我推荐连衣裙")
+        ranked = app.rank_results("recommend", intent["slots"], intent)
+        dynamic_products = app.products_for_ranked_results(ranked)
+        bootstrap_ids = {item["id"] for item in app.bootstrap_payload()["products"]}
+
+        self.assertEqual(len(dynamic_products), 10)
+        self.assertTrue(all(item["id"].startswith("tax-") for item in dynamic_products))
+        self.assertTrue(all(item["id"] not in bootstrap_ids for item in dynamic_products))
+
 
 class VoiceInteractionSourceTests(unittest.TestCase):
+    def test_home_feed_has_a_defensive_non_empty_result_fallback(self):
+        source = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("function usableResultIds", source)
+        self.assertIn("state.previous?.recommendationIds", source)
+        self.assertIn("state.bootstrap.initialRecommendations", source)
+
     def test_mobile_voice_uses_browser_recognition(self):
         source = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
 
@@ -438,6 +597,16 @@ class VoiceInteractionSourceTests(unittest.TestCase):
         self.assertNotIn("语音识别已取消", source)
         self.assertIn("recognition.onstart", source)
         self.assertIn("刚刚没有录到声音，请重新按住说话", source)
+
+    def test_voice_fallback_never_simulates_a_recognition_result(self):
+        source = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("window.SpeechRecognition || window.webkitSpeechRecognition", source)
+        self.assertIn("请使用 Chrome、Edge 或 Safari", source)
+        self.assertNotIn("演示识别", source)
+        self.assertNotIn("runDemoVoice", source)
+        self.assertNotIn("demoVoiceMode", source)
+        self.assertNotIn("bootstrap.examples[state.scene][0]", source)
 
     def test_static_assets_work_under_a_github_pages_subpath(self):
         static_dir = Path(__file__).parents[1] / "static"
