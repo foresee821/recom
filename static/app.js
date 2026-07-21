@@ -55,6 +55,8 @@ const state = {
   homeCatalogLoading: false,
   homeCatalogComplete: false,
   homeRecommendationIds: [],
+  homeCatalogPreloadRound: -1,
+  homeCatalogPreloadImages: [],
 };
 
 const productSpritePanels = {
@@ -279,6 +281,19 @@ function homepageProductsForRound(products, round) {
   return interleaved;
 }
 
+function preloadNextHomepageRound() {
+  const round = state.homeCatalogRound;
+  if (state.homeCatalogComplete || round === state.homeCatalogPreloadRound) return;
+  state.homeCatalogPreloadRound = round;
+  state.homeCatalogPreloadImages = homepageProductsForRound(state.homeCatalogProducts, round)
+    .map((item) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = item.image;
+      return image;
+    });
+}
+
 function appendNextHomepageRound() {
   if (state.homeCatalogLoading || state.homeCatalogComplete || !state.homeCatalogProducts.length) return;
   if (state.scene !== "recommend" || state.sessionIntent.length > 0) return;
@@ -319,6 +334,8 @@ async function loadHomepageCatalog() {
   }
   state.homeCatalogMaxRounds = Math.max(0, ...categoryCounts.values());
   state.homeCatalogRound = 0;
+  state.homeCatalogPreloadRound = -1;
+  state.homeCatalogPreloadImages = [];
   state.homeCatalogComplete = false;
   state.homeRecommendationIds = [];
   appendNextHomepageRound();
@@ -799,7 +816,8 @@ function bindEvents() {
   });
   els.scroller.addEventListener("scroll", () => {
     const remaining = els.scroller.scrollHeight - els.scroller.scrollTop - els.scroller.clientHeight;
-    if (remaining < 900) appendNextHomepageRound();
+    if (els.scroller.scrollTop > 120) preloadNextHomepageRound();
+    if (remaining < 4200) appendNextHomepageRound();
   }, { passive: true });
   bindLongPress();
 }
