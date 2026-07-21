@@ -474,17 +474,22 @@ class RankingTests(unittest.TestCase):
         source = app.STATIC_DIR / "data" / "home-products.json"
         payload = json.loads(source.read_text(encoding="utf-8"))
         products = payload["products"]
-        self.assertEqual(len(products), 1380)
+        self.assertEqual(len(products), 1374)
         grouped = {}
         for item in products:
             grouped.setdefault(item["xcat2"], []).append(item)
             self.assertTrue(item["image"].startswith("https://img.alicdn.com/imgextra/"))
             self.assertIn("人收藏", item["sales"])
         self.assertEqual(len(grouped), 46)
-        self.assertEqual({len(items) for items in grouped.values()}, {30})
+        self.assertEqual(set(map(len, grouped.values())), {29, 30})
         for items in grouped.values():
             ordercosts = [item["ordercost"] for item in items]
             self.assertEqual(ordercosts, sorted(ordercosts, reverse=True))
+        excluded_ids = {
+            "item-103359918", "item-158364381", "item-41986869647",
+            "item-43789563103", "item-89934541", "item-750171245001",
+        }
+        self.assertTrue(excluded_ids.isdisjoint(item["id"] for item in products))
 
     def test_home_catalog_refresh_logic_is_wired(self):
         source = (app.STATIC_DIR / "app.js").read_text(encoding="utf-8")

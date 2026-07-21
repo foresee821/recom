@@ -13,6 +13,15 @@ const positions = Object.fromEntries(headers.map((header, index) => [header, ind
 const required = ["item_id", "title", "ordercost", "cate_level1_name", "cate_level2_name", "pict_url", "reserve_price"];
 for (const field of required) if (!(field in positions)) throw new Error(`Missing required column: ${field}`);
 
+const excludedItemIds = new Set([
+  "103359918",
+  "158364381",
+  "41986869647",
+  "43789563103",
+  "89934541",
+  "750171245001",
+]);
+
 const asText = (value) => String(value ?? "").trim();
 const asNumber = (value) => {
   const parsed = Number(asText(value).replaceAll(",", ""));
@@ -26,7 +35,7 @@ for (const row of rows.slice(1)) {
   const xcat1 = asText(row[positions.cate_level1_name]);
   const xcat2 = asText(row[positions.cate_level2_name]);
   const pictUrl = asText(row[positions.pict_url]).replace(/^https?:\/\/img\.alicdn\.com\/imgextra\//, "").replace(/^\/+/, "");
-  if (!itemId || !title || !xcat2 || !pictUrl || seen.has(itemId)) continue;
+  if (!itemId || !title || !xcat2 || !pictUrl || seen.has(itemId) || excludedItemIds.has(itemId)) continue;
   seen.add(itemId);
   const ordercost = asNumber(row[positions.ordercost]);
   products.push({
