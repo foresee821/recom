@@ -235,6 +235,19 @@ function renderGrid(container, ids, isNear = false) {
     .join("");
 }
 
+function showHomepageLoading() {
+  const placeholder = () => `
+    <div class="product-card product-placeholder" aria-hidden="true">
+      <div class="placeholder-image"></div>
+      <div class="placeholder-line wide"></div>
+      <div class="placeholder-line"></div>
+      <div class="placeholder-price"></div>
+    </div>`;
+  els.recommendGrid.innerHTML = `
+    <div class="product-column">${placeholder()}${placeholder()}</div>
+    <div class="product-column">${placeholder()}${placeholder()}</div>`;
+}
+
 function homepageProductsForRound(products, round) {
   const bySecondaryCategory = new Map();
   for (const item of products) {
@@ -795,9 +808,10 @@ async function init() {
   try {
     state.bootstrap = await api("/api/demo/bootstrap");
     state.products = new Map(state.bootstrap.products.map((item) => [item.id, item]));
-    state.recommendationIds = [...state.bootstrap.initialRecommendations];
+    state.recommendationIds = [];
     state.searchIds = [...state.bootstrap.initialSearchResults];
     renderProducts();
+    showHomepageLoading();
     renderIntents();
     renderExamples();
     bindEvents();
