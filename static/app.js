@@ -124,6 +124,10 @@ const caseSpriteSources = {
   wow: "assets/case-eye-catching-products-v1.png",
 };
 
+const hiddenHomepageProductIds = new Set([
+  "item-158364675",
+]);
+
 function caseSpriteFor(productId) {
   const match = /^(rental|concert|happy|sunscreen|dressbase|dresskorean|dresscase|fitcase|wow)-(\d{2})$/.exec(productId);
   if (!match) return null;
@@ -247,6 +251,7 @@ function homepageProductsForRound(products, round) {
 
   const byPrimaryCategory = new Map();
   for (const item of selected) {
+    if (hiddenHomepageProductIds.has(item.id)) continue;
     const key = item.xcat1 || "其他";
     if (!byPrimaryCategory.has(key)) byPrimaryCategory.set(key, []);
     byPrimaryCategory.get(key).push(item);

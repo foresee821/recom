@@ -500,6 +500,8 @@ class RankingTests(unittest.TestCase):
         self.assertIn('querySelectorAll(".product-column")', source)
         self.assertIn('insertAdjacentHTML("beforeend", productCard(item, productIndex))', source)
         self.assertIn('fetch("data/home-products.json"', source)
+        self.assertIn('"item-158364675"', source)
+        self.assertIn("hiddenHomepageProductIds.has(item.id)", source)
 
     def test_common_catalog_has_two_products_and_local_sprite_for_each_group(self):
         self.assertGreaterEqual(len(app.PRODUCTS), 246)
