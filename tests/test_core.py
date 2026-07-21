@@ -1,3 +1,4 @@
+import json
 import unittest
 from collections import Counter
 from pathlib import Path
@@ -469,6 +470,28 @@ class RankingTests(unittest.TestCase):
             "https://img.alicdn.com/imgextra/i1/2212055986062/O1CN01dE8O381ueS4RGLaUZ_!!4611686018427383694-0-item_pic.jpg",
         )
 
+    def test_full_home_catalog_has_ranked_secondary_categories(self):
+        source = app.STATIC_DIR / "data" / "home-products.json"
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        products = payload["products"]
+        self.assertEqual(len(products), 1380)
+        grouped = {}
+        for item in products:
+            grouped.setdefault(item["xcat2"], []).append(item)
+            self.assertTrue(item["image"].startswith("https://img.alicdn.com/imgextra/"))
+            self.assertIn("人收藏", item["sales"])
+        self.assertEqual(len(grouped), 46)
+        self.assertEqual({len(items) for items in grouped.values()}, {30})
+        for items in grouped.values():
+            ordercosts = [item["ordercost"] for item in items]
+            self.assertEqual(ordercosts, sorted(ordercosts, reverse=True))
+
+    def test_home_catalog_refresh_logic_is_wired(self):
+        source = (app.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn('localStorage.getItem("homeCatalogRound")', source)
+        self.assertIn("homepageProductsForRound(products, round)", source)
+        self.assertIn('fetch("data/home-products.json"', source)
+
     def test_common_catalog_has_two_products_and_local_sprite_for_each_group(self):
         self.assertGreaterEqual(len(app.PRODUCTS), 246)
         for group, (_, intent_value, _) in app.COMMON_CATALOG_GROUPS.items():
@@ -620,9 +643,9 @@ class VoiceInteractionSourceTests(unittest.TestCase):
         self.assertNotIn('src="/app.js', source)
         self.assertNotIn("url('/assets/", source)
 
-    def test_homepage_can_render_all_odps_sample_products(self):
+    def test_homepage_can_render_every_secondary_category(self):
         source = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
-        self.assertIn("isNear ? 6 : 20", source)
+        self.assertIn("container === els.recommendGrid ? 60 : 20", source)
 
 
 if __name__ == "__main__":

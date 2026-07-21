@@ -214,8 +214,60 @@ function productCard(item, index, isNear = false) {
 }
 
 function renderGrid(container, ids, isNear = false) {
-  const uniqueIds = [...new Set(ids)].filter((id) => state.products.has(id)).slice(0, isNear ? 6 : 20);
+  const limit = isNear ? 6 : container === els.recommendGrid ? 60 : 20;
+  const uniqueIds = [...new Set(ids)].filter((id) => state.products.has(id)).slice(0, limit);
   container.innerHTML = uniqueIds.map((id, index) => productCard(state.products.get(id), index, isNear)).join("");
+}
+
+function homepageProductsForRound(products, round) {
+  const bySecondaryCategory = new Map();
+  for (const item of products) {
+    const key = item.xcat2 || item.category;
+    if (!key) continue;
+    if (!bySecondaryCategory.has(key)) bySecondaryCategory.set(key, []);
+    bySecondaryCategory.get(key).push(item);
+  }
+  const selected = [];
+  for (const items of bySecondaryCategory.values()) {
+    items.sort((left, right) => (right.ordercost || 0) - (left.ordercost || 0));
+    selected.push(items[round % items.length]);
+  }
+
+  const byPrimaryCategory = new Map();
+  for (const item of selected) {
+    const key = item.xcat1 || "其他";
+    if (!byPrimaryCategory.has(key)) byPrimaryCategory.set(key, []);
+    byPrimaryCategory.get(key).push(item);
+  }
+  const groups = [...byPrimaryCategory.values()]
+    .map((items) => items.sort((left, right) => (right.ordercost || 0) - (left.ordercost || 0)))
+    .sort((left, right) => (right[0]?.ordercost || 0) - (left[0]?.ordercost || 0));
+  const interleaved = [];
+  for (let index = 0; groups.some((items) => index < items.length); index += 1) {
+    for (const items of groups) if (items[index]) interleaved.push(items[index]);
+  }
+  return interleaved;
+}
+
+async function loadHomepageCatalog() {
+  const response = await fetch("data/home-products.json", { cache: "no-store" });
+  if (!response.ok) throw new Error("首页商品数据加载失败");
+  const payload = await response.json();
+  const products = Array.isArray(payload.products) ? payload.products : [];
+  if (!products.length) return;
+  let round = 0;
+  try {
+    round = Number.parseInt(localStorage.getItem("homeCatalogRound") || "0", 10) || 0;
+    localStorage.setItem("homeCatalogRound", String((round + 1) % 30));
+  } catch (_error) {
+    round = 0;
+  }
+  const selected = homepageProductsForRound(products, round);
+  for (const item of selected) state.products.set(item.id, item);
+  state.recommendationIds = selected.map((item) => item.id);
+  els.subtitle.textContent = `第 ${round + 1} 轮 · 每个二级类目各取收藏量第 ${round + 1} 名`;
+  els.subtitle.hidden = false;
+  renderProducts();
 }
 
 function usableResultIds(...groups) {
@@ -700,6 +752,7 @@ async function init() {
     renderIntents();
     renderExamples();
     bindEvents();
+    await loadHomepageCatalog();
   } catch (error) {
     showToast(`Demo 加载失败：${error.message}`);
   }
