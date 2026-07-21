@@ -326,6 +326,14 @@ function appendNextHomepageRound() {
   state.homeCatalogLoading = false;
 }
 
+function fillHomepageScrollBuffer() {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const remaining = els.scroller.scrollHeight - els.scroller.scrollTop - els.scroller.clientHeight;
+    if (remaining >= 9000 || state.homeCatalogComplete) break;
+    appendNextHomepageRound();
+  }
+}
+
 async function loadHomepageCatalog() {
   const response = await fetch("data/home-products.json", { cache: "no-store" });
   if (!response.ok) throw new Error("首页商品数据加载失败");
@@ -342,6 +350,7 @@ async function loadHomepageCatalog() {
   state.homeCatalogPreloadImages = [];
   state.homeCatalogComplete = false;
   state.homeRecommendationIds = [];
+  appendNextHomepageRound();
   appendNextHomepageRound();
 }
 
@@ -819,9 +828,8 @@ function bindEvents() {
     setTimeout(() => applyTranscript(value), 500);
   });
   els.scroller.addEventListener("scroll", () => {
-    const remaining = els.scroller.scrollHeight - els.scroller.scrollTop - els.scroller.clientHeight;
     if (els.scroller.scrollTop > 120) preloadNextHomepageRound();
-    if (remaining < 4200) appendNextHomepageRound();
+    fillHomepageScrollBuffer();
   }, { passive: true });
   bindLongPress();
 }
