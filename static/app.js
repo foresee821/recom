@@ -190,7 +190,7 @@ function productCard(item, index, isNear = false) {
 }
 
 function renderGrid(container, ids, isNear = false) {
-  const uniqueIds = [...new Set(ids)].filter((id) => state.products.has(id)).slice(0, isNear ? 6 : 14);
+  const uniqueIds = [...new Set(ids)].filter((id) => state.products.has(id)).slice(0, isNear ? 6 : 20);
   container.innerHTML = uniqueIds.map((id, index) => productCard(state.products.get(id), index, isNear)).join("");
 }
 

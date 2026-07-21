@@ -451,6 +451,10 @@ class VoiceInteractionSourceTests(unittest.TestCase):
         self.assertNotIn('src="/app.js', source)
         self.assertNotIn("url('/assets/", source)
 
+    def test_homepage_can_render_all_odps_sample_products(self):
+        source = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("isNear ? 6 : 20", source)
+
 
 if __name__ == "__main__":
     unittest.main()
