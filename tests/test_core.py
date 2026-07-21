@@ -491,6 +491,19 @@ class RankingTests(unittest.TestCase):
         }
         self.assertTrue(excluded_ids.isdisjoint(item["id"] for item in products))
 
+    def test_camping_intent_catalog_is_separate_from_homepage(self):
+        source = app.STATIC_DIR / "data" / "intent-products" / "camping.json"
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        self.assertEqual(payload["scene"], "camping")
+        self.assertEqual(payload["triggers"], ["露营", "野营", "野炊"])
+        self.assertEqual(len(payload["products"]), 19)
+        self.assertTrue(all(item["id"].startswith("intent-camping-") for item in payload["products"]))
+        home_ids = {
+            item["id"]
+            for item in json.loads((app.STATIC_DIR / "data" / "home-products.json").read_text(encoding="utf-8"))["products"]
+        }
+        self.assertTrue(home_ids.isdisjoint(item["id"] for item in payload["products"]))
+
     def test_home_catalog_refresh_logic_is_wired(self):
         source = (app.STATIC_DIR / "app.js").read_text(encoding="utf-8")
         self.assertNotIn('localStorage.getItem("homeCatalogRound")', source)
@@ -513,6 +526,8 @@ class RankingTests(unittest.TestCase):
         self.assertIn("homeCatalogCategoryFromTranscript(transcript)", source)
         self.assertIn("applyHomeCatalogIntentFallback(result, transcript)", source)
         self.assertIn('name: "xcat2", operator: "eq", value: category', source)
+        self.assertIn('fetch("data/intent-products/camping.json"', source)
+        self.assertIn("intentCatalogProductIds(transcript, result.sessionIntent)", source)
 
     def test_common_catalog_has_two_products_and_local_sprite_for_each_group(self):
         self.assertGreaterEqual(len(app.PRODUCTS), 246)

@@ -57,6 +57,8 @@ const state = {
   homeRecommendationIds: [],
   homeCatalogPreloadRound: -1,
   homeCatalogPreloadImages: [],
+  intentCatalogCache: new Map(),
+  activeIntentProductIds: [],
 };
 
 const productSpritePanels = {
@@ -334,6 +336,22 @@ function applyHomeCatalogIntentFallback(result, transcript) {
   return true;
 }
 
+async function intentCatalogProductIds(transcript, conditions) {
+  const normalized = String(transcript || "").replace(/\s/g, "");
+  const isCamping = /(露营|野营|野炊)/.test(normalized) ||
+    conditions.some((condition) => condition.sourceKey === "camping");
+  if (!isCamping) return [];
+  if (!state.intentCatalogCache.has("camping")) {
+    const response = await fetch("data/intent-products/camping.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("露营商品加载失败");
+    const payload = await response.json();
+    state.intentCatalogCache.set("camping", payload.products || []);
+  }
+  const products = state.intentCatalogCache.get("camping");
+  for (const item of products) state.products.set(item.id, item);
+  return products.map((item) => item.id);
+}
+
 function preloadNextHomepageRound() {
   const round = state.homeCatalogRound;
   if (state.homeCatalogComplete || round === state.homeCatalogPreloadRound) return;
@@ -507,6 +525,7 @@ async function clearAllIntents() {
   state.searchIds = result.searchResultIds;
   state.nearIds = [];
   state.previous = null;
+  state.activeIntentProductIds = [];
   renderIntents();
   renderProducts();
   renderVoiceKeywords();
@@ -752,8 +771,11 @@ async function applyTranscript(transcript) {
     (result.products || []).forEach((item) => state.products.set(item.id, item));
     state.sessionIntent = result.sessionIntent;
     if (state.scene === "recommend") {
+      const intentCatalogIds = await intentCatalogProductIds(transcript, result.sessionIntent);
+      state.activeIntentProductIds = intentCatalogIds;
       const catalogIds = rankHomeCatalogForIntent(result.sessionIntent);
       state.recommendationIds = usableResultIds(
+        intentCatalogIds,
         catalogIds,
         result.resultIds,
         result.nearMatchIds,
@@ -784,6 +806,7 @@ async function applyTranscript(transcript) {
 
 async function rerankCurrentConditions() {
   if (state.sessionIntent.length === 0) {
+    state.activeIntentProductIds = [];
     state.recommendationIds = state.homeRecommendationIds.length
       ? [...state.homeRecommendationIds]
       : [...state.bootstrap.initialRecommendations];
@@ -801,6 +824,7 @@ async function rerankCurrentConditions() {
   if (state.scene === "recommend") {
     const catalogIds = rankHomeCatalogForIntent(state.sessionIntent);
     state.recommendationIds = usableResultIds(
+      state.activeIntentProductIds,
       catalogIds,
       result.resultIds,
       result.nearMatchIds,
