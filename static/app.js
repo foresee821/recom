@@ -228,13 +228,18 @@ function productCard(item, index, isNear = false) {
 function renderGrid(container, ids, isNear = false) {
   const limit = isNear ? 6 : container === els.recommendGrid ? ids.length : 20;
   const uniqueIds = [...new Set(ids)].filter((id) => state.products.has(id)).slice(0, limit);
-  const columns = [[], []];
+  container.innerHTML = '<div class="product-column"></div><div class="product-column"></div>';
   uniqueIds.forEach((id, index) => {
-    columns[index % 2].push(productCard(state.products.get(id), index, isNear));
+    appendProductToShortestColumn(container, state.products.get(id), index, isNear);
   });
-  container.innerHTML = columns
-    .map((cards) => `<div class="product-column">${cards.join("")}</div>`)
-    .join("");
+}
+
+function appendProductToShortestColumn(container, item, index, isNear = false) {
+  const columns = [...container.querySelectorAll(".product-column")];
+  const target = columns.reduce((shortest, column) =>
+    column.offsetHeight < shortest.offsetHeight ? column : shortest,
+  );
+  target.insertAdjacentHTML("beforeend", productCard(item, index, isNear));
 }
 
 function showHomepageLoading() {
@@ -313,10 +318,9 @@ function appendNextHomepageRound() {
   if (startIndex === 0) {
     renderGrid(els.recommendGrid, state.recommendationIds);
   } else {
-    const columns = els.recommendGrid.querySelectorAll(".product-column");
     selected.forEach((item, index) => {
       const productIndex = startIndex + index;
-      columns[productIndex % 2].insertAdjacentHTML("beforeend", productCard(item, productIndex));
+      appendProductToShortestColumn(els.recommendGrid, item, productIndex);
     });
   }
   state.homeCatalogLoading = false;

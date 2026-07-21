@@ -499,8 +499,7 @@ class RankingTests(unittest.TestCase):
         self.assertIn("remaining < 4200", source)
         self.assertIn("preloadNextHomepageRound()", source)
         self.assertIn("const image = new Image();", source)
-        self.assertIn('querySelectorAll(".product-column")', source)
-        self.assertIn('insertAdjacentHTML("beforeend", productCard(item, productIndex))', source)
+        self.assertIn("appendProductToShortestColumn(els.recommendGrid, item, productIndex)", source)
         self.assertIn('fetch("data/home-products.json"', source)
         self.assertIn('"item-158364675"', source)
         self.assertIn("hiddenHomepageProductIds.has(item.id)", source)
@@ -667,6 +666,8 @@ class VoiceInteractionSourceTests(unittest.TestCase):
         script = (root / "app.js").read_text(encoding="utf-8")
         styles = (root / "styles.css").read_text(encoding="utf-8")
         self.assertIn('class="product-column"', script)
+        self.assertIn("column.offsetHeight < shortest.offsetHeight", script)
+        self.assertNotIn("columns[index % 2]", script)
         self.assertIn(".product-column { display:flex", styles)
         self.assertNotIn("grid-template-columns:repeat(2", styles)
 
