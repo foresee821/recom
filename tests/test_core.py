@@ -294,7 +294,11 @@ class RankingTests(unittest.TestCase):
         payload = app.bootstrap_payload()
 
         self.assertGreaterEqual(len(payload["products"]), 85)
-        self.assertTrue(all(item["image"].startswith("/assets/") for item in payload["products"]))
+        self.assertTrue(all(
+            item["image"].startswith("/assets/")
+            or item["image"].startswith("https://img.alicdn.com/imgextra/")
+            for item in payload["products"]
+        ))
         self.assertEqual(payload["searchQuery"], "男生白色运动鞋")
         self.assertNotIn("explain", payload["examples"])
         self.assertEqual(
@@ -409,6 +413,20 @@ class RankingTests(unittest.TestCase):
                 condition = app.slot("category", "eq", value, "soft", display)
                 matches = [item for item in app.PRODUCTS if app.product_matches(item, condition)]
                 self.assertGreater(len(matches), 0)
+
+    def test_odps_sample_products_are_homepage_recommendations(self):
+        self.assertEqual(len(app.ODPS_TEST_PRODUCTS), 17)
+        self.assertEqual(
+            app.INITIAL_RECOMMENDATIONS,
+            [item["id"] for item in app.ODPS_TEST_PRODUCTS],
+        )
+        sample = app.ODPS_TEST_PRODUCTS[7]
+        self.assertEqual(sample["title"], "韩系穿搭灰色拼接假两件一字肩t恤设计感特别漂亮掐腰上衣2026秋")
+        self.assertEqual(sample["price"], 109)
+        self.assertEqual(
+            sample["image"],
+            "https://img.alicdn.com/imgextra/i1/2212055986062/O1CN01dE8O381ueS4RGLaUZ_!!4611686018427383694-0-item_pic.jpg",
+        )
 
 
 class VoiceInteractionSourceTests(unittest.TestCase):

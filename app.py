@@ -37,7 +37,7 @@ def product(
         "title": title,
         "category": category,
         "price": price,
-        "image": f"/assets/{image}.svg",
+        "image": image if image.startswith(("http://", "https://")) else f"/assets/{image}.svg",
         "attributes": attributes,
         "baseScore": base_score,
         "sales": sales,
@@ -311,8 +311,60 @@ for group, rows in CASE_PRODUCT_GROUPS.items():
             )
         )
 
+
+def infer_sample_category(title: str) -> tuple[str, list[str]]:
+    lowered = title.lower()
+    rules = (
+        (("婴儿", "宝宝", "新生儿", "儿童", "童装"), "母婴", ["宝宝用品", "童装"]),
+        (("劳保鞋", "鞋"), "鞋靴", ["鞋", "穿搭"]),
+        (("手镯", "翡翠", "玉镯"), "珠宝", ["手镯", "珠宝", "女款"]),
+        (("雨伞", "伞"), "日用", ["雨伞", "便携"]),
+        (("团扇", "宫扇", "扇子"), "文创", ["非遗", "手工", "送礼"]),
+        (("cos", "cosplay"), "服饰", ["动漫", "角色扮演", "穿搭"]),
+        (("衬衫", "针织", "开衫", "毛衣", "t恤", "卫衣", "上衣", "cardigan", "sweater"), "服饰", ["上衣", "穿搭"]),
+    )
+    for keywords, category, attributes in rules:
+        if any(keyword in lowered for keyword in keywords):
+            extra = []
+            if any(word in lowered for word in ("女", "women")):
+                extra.append("女款")
+            if any(word in lowered for word in ("男", "men")):
+                extra.append("男款")
+            return category, attributes + extra
+    return "其他", ["精选商品"]
+
+
+def load_sample_products() -> list[dict[str, Any]]:
+    source = ROOT / "catalog" / "item_sample.json"
+    if not source.exists():
+        return []
+    rows = json.loads(source.read_text(encoding="utf-8"))
+    result = []
+    for index, row in enumerate(rows, start=1):
+        title = str(row["title"]).strip()
+        pict_url = str(row["pict_url"]).strip().lstrip("/")
+        category, attributes = infer_sample_category(title)
+        result.append(product(
+            f"odps-test-{index:02d}",
+            title,
+            category,
+            float(row["price"]),
+            f"https://img.alicdn.com/imgextra/{pict_url}",
+            attributes=attributes + ["ODPS测试商品"],
+            base_score=20 - index,
+            sales="测试数据",
+            novelty=7,
+            styles=["韩系"] if "韩系" in title else [],
+            trend=7,
+        ))
+    return result
+
+
+ODPS_TEST_PRODUCTS = load_sample_products()
+PRODUCTS.extend(ODPS_TEST_PRODUCTS)
+
 PRODUCT_BY_ID = {item["id"]: item for item in PRODUCTS}
-INITIAL_RECOMMENDATIONS = [
+INITIAL_RECOMMENDATIONS = [item["id"] for item in ODPS_TEST_PRODUCTS] or [
     "fresh-02", "fresh-01", "home-02", "fresh-03", "home-01", "run-01", "fresh-04", "run-03",
     "home-03", "shoe-03", "run-02", "home-04",
 ]
