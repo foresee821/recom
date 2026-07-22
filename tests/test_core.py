@@ -86,9 +86,12 @@ class RealCatalogTests(unittest.TestCase):
     def test_frontend_loads_catalog_by_category_shard(self):
         source = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn('data/intent-catalog/index.json', source)
-        self.assertIn('data/intent-catalog/shards/${match.shard}', source)
+        self.assertIn('data/intent-catalog/shards/${shard}', source)
         self.assertIn("categoryCatalogProducts(transcript", source)
         self.assertIn('includes("测试商品请不要拍")', source)
+        self.assertIn("categoryMatchScore(transcript", source)
+        self.assertIn("interleaveCategoryProducts(groups)", source)
+        self.assertIn('"吊坠": ["项坠/吊坠", "项链"]', source)
 
 
 if __name__ == "__main__":
