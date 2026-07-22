@@ -38,7 +38,7 @@ def product_from_row(row: dict[str, str]) -> dict[str, Any] | None:
     pict_url = re.sub(
         r"^https?://img\.alicdn\.com/imgextra/", "", text(row.get("pict_url"))
     ).lstrip("/")
-    if not all((item_id, title, xcat1, xcat2, pict_url)):
+    if not all((item_id, title, xcat1, xcat2, pict_url)) or "测试商品请不要拍" in title:
         return None
     commodity = text(row.get("commodity_name"))
     cate_name = text(row.get("cate_name")) or xcat2

@@ -32,10 +32,11 @@ class IntentParserTests(unittest.TestCase):
 
 class RealCatalogTests(unittest.TestCase):
     def test_real_catalog_replaces_legacy_and_template_products(self):
-        self.assertEqual(len(app.TAXONOMY_PRODUCTS), 22935)
+        self.assertEqual(len(app.TAXONOMY_PRODUCTS), 22679)
         self.assertEqual(app.PRODUCTS, [])
         self.assertTrue(all(item["id"].startswith("catalog-") for item in app.TAXONOMY_PRODUCTS))
         self.assertFalse(any(item["id"].startswith("tax-") for item in app.PRODUCT_BY_ID.values()))
+        self.assertFalse(any("测试商品请不要拍" in item["title"] for item in app.TAXONOMY_PRODUCTS))
 
     def test_bootstrap_does_not_send_the_full_catalog(self):
         payload = app.bootstrap_payload()
@@ -56,7 +57,7 @@ class RealCatalogTests(unittest.TestCase):
     def test_catalog_index_and_shards_cover_every_product(self):
         index_path = ROOT / "static" / "data" / "intent-catalog" / "index.json"
         index = json.loads(index_path.read_text(encoding="utf-8"))
-        self.assertEqual(index["productCount"], 22935)
+        self.assertEqual(index["productCount"], 22679)
         self.assertEqual(index["xcat1Count"], 103)
         self.assertEqual(index["xcat2Count"], 1456)
         shard_dir = index_path.parent / "shards"
@@ -77,8 +78,9 @@ class RealCatalogTests(unittest.TestCase):
     def test_homepage_catalog_remains_independent(self):
         home = json.loads((ROOT / "static" / "data" / "home-products.json").read_text(encoding="utf-8"))
         intent_ids = set(app.PRODUCT_BY_ID)
-        self.assertEqual(len(home["products"]), 1374)
+        self.assertEqual(len(home["products"]), 1348)
         self.assertFalse(intent_ids.intersection(item["id"] for item in home["products"]))
+        self.assertFalse(any("测试商品请不要拍" in item["title"] for item in home["products"]))
 
     def test_frontend_loads_catalog_by_category_shard(self):
         source = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
