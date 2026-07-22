@@ -385,12 +385,14 @@ async function categoryCatalogProducts(transcript, conditions) {
   }
   if (!match) return { ids: [], match: null };
   if (!state.categoryCatalogShardCache.has(match.shard)) {
-    const response = await fetch(`data/intent-catalog/shards/${match.shard}`, { cache: "force-cache" });
+    const version = encodeURIComponent(index.version || "latest");
+    const response = await fetch(`data/intent-catalog/shards/${match.shard}?v=${version}`, { cache: "no-cache" });
     if (!response.ok) throw new Error("类目商品加载失败");
     const payload = await response.json();
     state.categoryCatalogShardCache.set(match.shard, payload.products || []);
   }
   const products = state.categoryCatalogShardCache.get(match.shard)
+    .filter((item) => !String(item.title || "").includes("测试商品请不要拍"))
     .filter((item) => positive?.name === "xcat1" || !match.xcat2 || item.xcat2 === match.xcat2)
     .sort((left, right) => (right.ordercost || 0) - (left.ordercost || 0))
     .slice(0, 80);

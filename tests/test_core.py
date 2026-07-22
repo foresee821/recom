@@ -60,6 +60,7 @@ class RealCatalogTests(unittest.TestCase):
         self.assertEqual(index["productCount"], 22679)
         self.assertEqual(index["xcat1Count"], 103)
         self.assertEqual(index["xcat2Count"], 1456)
+        self.assertRegex(index["version"], r"flat_items_filtered\.csv-[0-9a-f]{12}")
         shard_dir = index_path.parent / "shards"
         shard_total = 0
         for shard in {item["shard"] for item in index["categories"]}:
@@ -87,6 +88,7 @@ class RealCatalogTests(unittest.TestCase):
         self.assertIn('data/intent-catalog/index.json', source)
         self.assertIn('data/intent-catalog/shards/${match.shard}', source)
         self.assertIn("categoryCatalogProducts(transcript", source)
+        self.assertIn('includes("测试商品请不要拍")', source)
 
 
 if __name__ == "__main__":

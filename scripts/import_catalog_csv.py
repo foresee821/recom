@@ -78,6 +78,7 @@ def main() -> None:
     parser.add_argument("source", type=Path)
     args = parser.parse_args()
 
+    source_digest = hashlib.sha256(args.source.read_bytes()).hexdigest()[:12]
     with args.source.open(encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         required = {
@@ -122,7 +123,7 @@ def main() -> None:
         "products": products,
     }
     index = {
-        "version": source_label,
+        "version": f"{source_label}-{source_digest}",
         "productCount": len(products),
         "xcat1Count": len(by_xcat1),
         "xcat2Count": len(categories),
