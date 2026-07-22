@@ -484,16 +484,12 @@ TAXONOMY_DATA = json.loads((DATA_DIR / "category_taxonomy.json").read_text(encod
 TAXONOMY_CATEGORIES: list[dict[str, str]] = TAXONOMY_DATA["categories"]
 TAXONOMY_CATALOG = json.loads((DATA_DIR / "category_products.json").read_text(encoding="utf-8"))
 TAXONOMY_PRODUCTS: list[dict[str, Any]] = TAXONOMY_CATALOG["products"]
-PRODUCTS.extend(ODPS_TEST_PRODUCTS)
-PRODUCT_BY_ID = {item["id"]: item for item in [*PRODUCTS, *TAXONOMY_PRODUCTS]}
-INITIAL_RECOMMENDATIONS = [item["id"] for item in ODPS_TEST_PRODUCTS] or [
-    "fresh-02", "fresh-01", "home-02", "fresh-03", "home-01", "run-01", "fresh-04", "run-03",
-    "home-03", "shoe-03", "run-02", "home-04",
-]
-INITIAL_SEARCH_RESULTS = [
-    "run-01", "shoe-02", "shoe-01", "shoe-04", "run-03", "shoe-06", "shoe-03", "shoe-07",
-    "shoe-05", "shoe-08",
-]
+# The homepage is loaded independently by static/app.js. Runtime intent results use
+# only the real CSV-backed catalog so legacy demo/template products cannot leak in.
+PRODUCTS: list[dict[str, Any]] = []
+PRODUCT_BY_ID = {item["id"]: item for item in TAXONOMY_PRODUCTS}
+INITIAL_RECOMMENDATIONS: list[str] = []
+INITIAL_SEARCH_RESULTS: list[str] = []
 
 
 def slot(name: str, operator: str, value: Any, strength: str, label: str) -> dict[str, Any]:
@@ -1286,7 +1282,7 @@ def rank_product_results(scene: str, conditions: list[dict[str, Any]]) -> dict[s
     taxonomy_conditions = [
         item for item in conditions if item["name"] in ("xcat1", "xcat2")
     ]
-    candidates = TAXONOMY_PRODUCTS if taxonomy_conditions else PRODUCTS
+    candidates = TAXONOMY_PRODUCTS
     for item in candidates:
         if (
             scene == "search"
@@ -1314,16 +1310,16 @@ def rank_product_results(scene: str, conditions: list[dict[str, Any]]) -> dict[s
         scored.append((score, item))
 
     scored.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
-    exact_requirements = [*hard, *taxonomy_conditions]
-    exact = [
-        item["id"]
-        for _, item in scored
-        if all(product_matches(item, condition) for condition in exact_requirements)
-    ]
     positive_categories = [
         condition
         for condition in conditions
         if condition["name"] == "category" and condition["operator"] == "eq"
+    ]
+    exact_requirements = [*hard, *taxonomy_conditions, *positive_categories]
+    exact = [
+        item["id"]
+        for _, item in scored
+        if all(product_matches(item, condition) for condition in exact_requirements)
     ]
     if scene == "recommend" and len(positive_categories) > 1:
         remaining = list(exact)
@@ -1407,7 +1403,7 @@ def rank_scenario_results(
     refinements = [item for item in conditions if item not in scenario_conditions]
     hard_refinements = [item for item in refinements if item["strength"] == "hard"]
     scored: list[tuple[float, dict[str, Any]]] = []
-    for item in PRODUCTS:
+    for item in TAXONOMY_PRODUCTS:
         target_indexes = [index for index, target in enumerate(targets) if product_contains_value(item, target)]
         if not target_indexes:
             continue
@@ -1472,7 +1468,7 @@ def rank_explore_results(
     refinements = [item for item in conditions if item.get("sourceMode") != "explore"]
     hard = [item for item in refinements if item["strength"] == "hard"]
     scored: list[tuple[float, dict[str, Any]]] = []
-    for item in PRODUCTS:
+    for item in TAXONOMY_PRODUCTS:
         if scene == "search" and not all(tag in item["attributes"] for tag in ("男款", "白色", "运动鞋")):
             continue
         if not all(product_matches(item, condition) for condition in hard):
@@ -1601,7 +1597,7 @@ def products_for_ranked_results(ranked: dict[str, list[str]]) -> list[dict[str, 
     return [
         PRODUCT_BY_ID[item_id]
         for item_id in dict.fromkeys(result_ids)
-        if item_id.startswith("tax-")
+        if item_id in PRODUCT_BY_ID
     ]
 
 

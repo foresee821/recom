@@ -58,6 +58,8 @@ const state = {
   homeCatalogPreloadRound: -1,
   homeCatalogPreloadImages: [],
   intentCatalogCache: new Map(),
+  categoryCatalogIndex: null,
+  categoryCatalogShardCache: new Map(),
   activeIntentProductIds: [],
 };
 
@@ -350,6 +352,64 @@ async function intentCatalogProductIds(transcript, conditions) {
   const products = state.intentCatalogCache.get("camping");
   for (const item of products) state.products.set(item.id, item);
   return products.map((item) => item.id);
+}
+
+async function loadCategoryCatalogIndex() {
+  if (state.categoryCatalogIndex) return state.categoryCatalogIndex;
+  const response = await fetch("data/intent-catalog/index.json", { cache: "no-store" });
+  if (!response.ok) throw new Error("意图商品索引加载失败");
+  state.categoryCatalogIndex = await response.json();
+  return state.categoryCatalogIndex;
+}
+
+function normalizedCatalogText(value) {
+  return String(value || "").replace(/[\s，。！？、,.!?“”"'：:；()（）/]/g, "");
+}
+
+async function categoryCatalogProducts(transcript, conditions) {
+  const index = await loadCategoryCatalogIndex();
+  const normalized = normalizedCatalogText(transcript);
+  const positive = [...(conditions || [])].reverse().find((condition) =>
+    condition.operator !== "neq" && ["xcat1", "xcat2"].includes(condition.name),
+  );
+  let match = null;
+  if (positive?.name === "xcat2") {
+    match = index.categories.find((item) => item.xcat2 === positive.value);
+  } else if (positive?.name === "xcat1") {
+    match = index.categories.find((item) => item.xcat1 === positive.value);
+  }
+  if (!match) {
+    match = [...index.categories]
+      .sort((left, right) => right.xcat2.length - left.xcat2.length)
+      .find((item) => normalized.includes(normalizedCatalogText(item.xcat2)));
+  }
+  if (!match) return { ids: [], match: null };
+  if (!state.categoryCatalogShardCache.has(match.shard)) {
+    const response = await fetch(`data/intent-catalog/shards/${match.shard}`, { cache: "force-cache" });
+    if (!response.ok) throw new Error("类目商品加载失败");
+    const payload = await response.json();
+    state.categoryCatalogShardCache.set(match.shard, payload.products || []);
+  }
+  const products = state.categoryCatalogShardCache.get(match.shard)
+    .filter((item) => positive?.name === "xcat1" || !match.xcat2 || item.xcat2 === match.xcat2)
+    .sort((left, right) => (right.ordercost || 0) - (left.ordercost || 0))
+    .slice(0, 80);
+  for (const item of products) state.products.set(item.id, item);
+  return { ids: products.map((item) => item.id), match };
+}
+
+function applyCategoryCatalogFallback(result, catalogResult) {
+  if (result.intent.type !== "unknown" || !catalogResult.ids.length) return;
+  const condition = {
+    name: "xcat2", operator: "eq", value: catalogResult.match.xcat2,
+    strength: "soft", label: catalogResult.match.xcat2,
+  };
+  result.intent = { type: "pull", mode: "product", modeLabel: "商品意图", slots: [condition] };
+  result.sessionIntent = [
+    ...state.sessionIntent.filter((item) => !["category", "xcat1", "xcat2"].includes(item.name)),
+    condition,
+  ];
+  result.feedback = `已为你找到${catalogResult.match.xcat2}商品`;
 }
 
 function applyIntentCatalogFallback(result, intentCatalogIds) {
@@ -778,6 +838,8 @@ async function applyTranscript(transcript) {
         sessionIntent: state.sessionIntent,
       }),
     });
+    const categoryCatalog = await categoryCatalogProducts(transcript, result.sessionIntent || []);
+    applyCategoryCatalogFallback(result, categoryCatalog);
     const intentCatalogIds = await intentCatalogProductIds(transcript, result.sessionIntent || []);
     applyIntentCatalogFallback(result, intentCatalogIds);
     if (!applyHomeCatalogIntentFallback(result, transcript)) {
@@ -791,6 +853,7 @@ async function applyTranscript(transcript) {
       const catalogIds = rankHomeCatalogForIntent(result.sessionIntent);
       state.recommendationIds = usableResultIds(
         intentCatalogIds,
+        categoryCatalog.ids,
         catalogIds,
         result.resultIds,
         result.nearMatchIds,
