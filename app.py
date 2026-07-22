@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import re
@@ -12,8 +13,10 @@ from typing import Any
 
 ROOT = Path(__file__).parent
 STATIC_DIR = ROOT / "static"
+HOME_CATALOG_PATH = STATIC_DIR / "data" / "home-products.json"
 _WHALE_CONFIG_LOCK = threading.Lock()
 _WHALE_CONFIG_SIGNATURE: tuple[str, str] | None = None
+_HOME_CATALOG_GZIP: bytes | None = None
 
 
 def load_local_env(path: Path) -> None:
@@ -2075,8 +2078,14 @@ class DemoHandler(SimpleHTTPRequestHandler):
 
     def send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        accepts_gzip = "gzip" in self.headers.get("Accept-Encoding", "").lower()
+        if accepts_gzip:
+            body = gzip.compress(body, compresslevel=5)
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        if accepts_gzip:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -2087,7 +2096,31 @@ class DemoHandler(SimpleHTTPRequestHandler):
             return {}
         return json.loads(self.rfile.read(length).decode("utf-8"))
 
+    def send_home_catalog(self) -> None:
+        global _HOME_CATALOG_GZIP
+        if "gzip" not in self.headers.get("Accept-Encoding", "").lower():
+            self.path = "/data/home-products.json"
+            super().do_GET()
+            return
+        if _HOME_CATALOG_GZIP is None:
+            with _WHALE_CONFIG_LOCK:
+                if _HOME_CATALOG_GZIP is None:
+                    _HOME_CATALOG_GZIP = gzip.compress(
+                        HOME_CATALOG_PATH.read_bytes(),
+                        compresslevel=5,
+                    )
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Encoding", "gzip")
+        self.send_header("Vary", "Accept-Encoding")
+        self.send_header("Content-Length", str(len(_HOME_CATALOG_GZIP)))
+        self.end_headers()
+        self.wfile.write(_HOME_CATALOG_GZIP)
+
     def do_GET(self) -> None:
+        if self.path.partition("?")[0] == "/data/home-products.json":
+            self.send_home_catalog()
+            return
         if self.path == "/api/demo/bootstrap":
             self.send_json(bootstrap_payload())
             return

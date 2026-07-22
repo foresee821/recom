@@ -41,9 +41,11 @@ button { border: 0; cursor: pointer; }
 .home-indicator { position:absolute; z-index:50; bottom:13px; left:50%; transform:translateX(-50%); width:126px; height:4px; border-radius:4px; background:rgba(0,0,0,.72); }
 .desktop-tip { color:#777; font-size:12px; margin:13px 0 0; }
 
-.app-header { position:relative; z-index:10; padding:9px 8px 7px; background:linear-gradient(180deg,#fff5f1 0,#fff9f7 56%,#fff 100%); }
+.app-header { position:relative; z-index:10; padding:9px 8px 7px; background:linear-gradient(180deg,#fff8f4 0,#fffaf8 62%,#fff 100%); }
 .status-row { display:flex; justify-content:space-between; align-items:center; height:25px; padding:0 20px 1px; color:#050505; font-size:11px; font-weight:800; }
-.status-row i { font-style:normal; font-size:9px; }
+.status-row i { font-style:normal; font-size:8px; letter-spacing:-1px; }
+.status-row .phone-status { display:flex; align-items:center; gap:6px; }
+.status-row .phone-status em { font-style:normal; font-size:10px; font-weight:850; }
 .status-row b { padding:1px 5px; border-radius:5px; background:#111; color:#fff; font-size:9px; }
 .top-channels { display:flex; align-items:flex-end; gap:16px; height:39px; padding:2px 4px 0; overflow:hidden; white-space:nowrap; }
 .top-channels button { position:relative; flex:0 0 auto; height:35px; padding:0; background:transparent; color:#2d2630; font-size:15px; font-weight:600; }
@@ -70,34 +72,48 @@ button { border: 0; cursor: pointer; }
 .recommend-view,.search-view { min-height:100%; }
 .recommend-view { padding:4px 6px 30px; }
 
-.channel-grid { display:grid; grid-template-columns:repeat(6,1fr); padding:8px 0 6px; background:#fff; }
-.channel-grid button { display:grid; justify-items:center; gap:4px; min-width:0; padding:0; background:transparent; color:#222; font-size:9px; }
-.channel-grid span { display:grid; place-items:center; width:39px; height:36px; border-radius:10px; color:transparent; font-size:0; background-image:url('assets/taobao-icon-reference.jpg'); background-repeat:no-repeat; background-size:460px auto; }
-.channel-grid b { max-width:54px; overflow:hidden; white-space:nowrap; font-weight:500; }
-.icon-factory { background-position:-30px -169px; }
-.icon-sign { background-position:-112px -170px; }
-.icon-coin { border-radius:50%!important; background-position:-188px -169px; }
-.icon-farm { background-position:-266px -165px; }
-.icon-station { background-position:-346px -170px; }
-.icon-event { background-position:-429px -170px; }
+.channel-grid { display:grid; grid-template-columns:repeat(5,1fr); padding:9px 1px 8px; border-radius:9px; background:#fff; }
+.channel-grid button { display:grid; justify-items:center; gap:4px; min-width:0; padding:0; background:transparent; color:#272229; font-size:10px; }
+.channel-grid span { position:relative; display:grid; place-items:center; width:42px; height:38px; border-radius:12px; background-image:none; color:#fff; font-size:21px; font-weight:900; line-height:1; }
+.channel-grid span>i { position:absolute; z-index:2; top:-4px; right:-9px; padding:2px 4px; border-radius:7px; background:#ef7953; color:#fff; font:700 7px/1 "PingFang SC",sans-serif; white-space:nowrap; }
+.channel-grid b { max-width:66px; overflow:hidden; white-space:nowrap; font-size:10px; font-weight:520; }
+.icon-farm { border-radius:18px 18px 10px!important; background:linear-gradient(145deg,#53d679,#30b764); text-shadow:0 1px 0 rgba(0,0,0,.05); }
+.icon-hema { border-radius:50%!important; background:linear-gradient(145deg,#d9f6ff,#86d6fb); color:#163f87!important; font-size:8px!important; line-height:1.05!important; text-align:center; }
+.icon-hema::before { content:"⌁"; position:absolute; top:-6px; color:#48bde9; font-size:22px; transform:rotate(-12deg); }
+.icon-sign { border-radius:9px!important; background:linear-gradient(145deg,#ef4942,#cf282d); font-size:24px!important; }
+.icon-category { border-radius:50%!important; background:linear-gradient(145deg,#d916c5,#7524c6); font-size:25px!important; }
+.icon-channels { grid-template-columns:1fr 1fr; gap:1px; padding:4px; border-radius:12px!important; background:#fff8df; color:#222!important; }
+.icon-channels>i { position:static!important; display:grid; width:14px; height:13px; padding:0!important; place-items:center; border-radius:50%!important; background:#ffe565!important; font-size:8px!important; font-style:normal!important; line-height:1!important; }
 
-.operation-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin-top:5px; }
-.operation-card { overflow:hidden; min-width:0; height:141px; border-radius:9px; background:#fff; }
-.operation-card header { display:flex; justify-content:space-between; align-items:center; height:27px; padding:5px 7px 2px; white-space:nowrap; }
-.operation-card header strong { font-size:12px; }
+.operation-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:0; overflow:hidden; margin-top:5px; padding:4px 0 2px; border-radius:9px; background:#fff; }
+.operation-card { overflow:hidden; min-width:0; height:132px; border-radius:0; background:#fff; }
+.operation-card header { display:flex; justify-content:center; align-items:center; height:25px; padding:4px 2px 1px; white-space:nowrap; }
+.operation-card header strong { overflow:hidden; color:#222; font-size:10px; font-weight:850; text-overflow:ellipsis; }
 .operation-card header span { color:#28a464; font-size:8px; }
 .live-card header span { padding:2px 4px; border-radius:4px; background:#fb3660; color:#fff; }
 .flash-card header span { color:#f0443a; }
 .op-photo,.product-photo { background-image:url('assets/taobao-products-v1.png'); background-repeat:no-repeat; background-size:200% 300%; }
-.op-photo { height:91px; background-color:#eee; }
+.op-photo { height:82px; background-color:#f5f3f2; }
 .op-photo-fashion { position:relative; background-position:0 50%; }
 .op-photo-fashion::after { content:""; position:absolute; inset:0; background:linear-gradient(transparent 55%,rgba(0,0,0,.45)); }
 .op-photo-fashion i { position:absolute; z-index:1; right:5px; bottom:5px; padding:2px 4px; border-radius:5px; background:#ff2850; color:#fff; font-size:7px; font-style:normal; }
 .op-photo-jewel { background-position:100% 50%; }
 .op-photo-polo { background-position:0 0; }
-.operation-card p { height:23px; margin:0; padding:4px 7px; overflow:hidden; white-space:nowrap; color:#555; font-size:8px; }
-.operation-card p b { color:var(--red); font-size:11px; }
+.op-photo-jar,.op-photo-beauty { background-image:url('assets/catalog-products-v1.png'); background-size:400% 400%; }
+.op-photo-jar { background-position:100% 66.667%; }
+.op-photo-shoes { background-position:100% 100%; }
+.op-photo-beauty { background-position:0 0; }
+.operation-card p { height:23px; margin:0; padding:4px 1px; overflow:hidden; white-space:nowrap; color:#555; font-size:8px; text-align:center; }
+.operation-card p b { color:#f15b42; font-size:10px; }
 .operation-card p em { margin-left:3px; padding:1px 3px; border-radius:4px; background:var(--red); color:#fff; font-size:7px; font-style:normal; }
+.national-card header strong { color:#39a961; }
+.countdown { padding:2px 3px; border-radius:2px; background:#ee4a44; color:#fff!important; font-size:8px!important; letter-spacing:.02em; }
+.super-deal { display:grid; grid-template-columns:auto 1fr auto auto; align-items:center; gap:6px; height:38px; margin-top:6px; padding:0 9px; border-radius:8px; background:linear-gradient(95deg,#ef3023,#f5422b 68%,#f66c3e); color:#fff; box-shadow:inset 0 0 0 1px rgba(255,255,255,.16); }
+.super-deal strong { font-size:12px; white-space:nowrap; }
+.super-deal strong span { font-size:15px; }
+.super-deal p { margin:0; overflow:hidden; font-size:9px; font-weight:650; white-space:nowrap; text-overflow:ellipsis; }
+.super-deal>b { padding:4px 7px; border-radius:5px; background:#fff5dc; color:#e95331; font-size:10px; }
+.super-deal em { font-size:10px; font-style:normal; font-weight:800; white-space:nowrap; }
 
 
 .product-grid { display:flex; align-items:flex-start; gap:7px; }

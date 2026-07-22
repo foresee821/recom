@@ -915,14 +915,15 @@ async function init() {
   try {
     state.bootstrap = await api("/api/demo/bootstrap");
     state.products = new Map(state.bootstrap.products.map((item) => [item.id, item]));
-    state.recommendationIds = [];
+    state.recommendationIds = [...state.bootstrap.initialRecommendations];
     state.searchIds = [...state.bootstrap.initialSearchResults];
     renderProducts();
-    showHomepageLoading();
     renderIntents();
     renderExamples();
     bindEvents();
-    await loadHomepageCatalog();
+    loadHomepageCatalog().catch((error) => {
+      console.warn("长尾首页商品加载失败，继续使用基础商品：", error);
+    });
   } catch (error) {
     showToast(`Demo 加载失败：${error.message}`);
   }
