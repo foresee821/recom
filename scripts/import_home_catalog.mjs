@@ -35,7 +35,7 @@ for (const row of rows.slice(1)) {
   const xcat1 = asText(row[positions.cate_level1_name]);
   const xcat2 = asText(row[positions.cate_level2_name]);
   const pictUrl = asText(row[positions.pict_url]).replace(/^https?:\/\/img\.alicdn\.com\/imgextra\//, "").replace(/^\/+/, "");
-  if (!itemId || !title || !xcat2 || !pictUrl || seen.has(itemId) || excludedItemIds.has(itemId)) continue;
+  if (!itemId || !title || !xcat2 || !pictUrl || title.includes("测试商品请不要拍") || seen.has(itemId) || excludedItemIds.has(itemId)) continue;
   seen.add(itemId);
   const ordercost = asNumber(row[positions.ordercost]);
   products.push({

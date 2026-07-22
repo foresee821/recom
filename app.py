@@ -5,6 +5,7 @@ import json
 import os
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -511,16 +512,12 @@ TAXONOMY_DATA = json.loads((DATA_DIR / "category_taxonomy.json").read_text(encod
 TAXONOMY_CATEGORIES: list[dict[str, str]] = TAXONOMY_DATA["categories"]
 TAXONOMY_CATALOG = json.loads((DATA_DIR / "category_products.json").read_text(encoding="utf-8"))
 TAXONOMY_PRODUCTS: list[dict[str, Any]] = TAXONOMY_CATALOG["products"]
-PRODUCTS.extend(ODPS_TEST_PRODUCTS)
-PRODUCT_BY_ID = {item["id"]: item for item in [*PRODUCTS, *TAXONOMY_PRODUCTS]}
-INITIAL_RECOMMENDATIONS = [item["id"] for item in ODPS_TEST_PRODUCTS] or [
-    "fresh-02", "fresh-01", "home-02", "fresh-03", "home-01", "run-01", "fresh-04", "run-03",
-    "home-03", "shoe-03", "run-02", "home-04",
-]
-INITIAL_SEARCH_RESULTS = [
-    "run-01", "shoe-02", "shoe-01", "shoe-04", "run-03", "shoe-06", "shoe-03", "shoe-07",
-    "shoe-05", "shoe-08",
-]
+# The homepage is loaded independently by static/app.js. Runtime intent results use
+# only the real CSV-backed catalog so legacy demo/template products cannot leak in.
+PRODUCTS: list[dict[str, Any]] = []
+PRODUCT_BY_ID = {item["id"]: item for item in TAXONOMY_PRODUCTS}
+INITIAL_RECOMMENDATIONS: list[str] = []
+INITIAL_SEARCH_RESULTS: list[str] = []
 
 
 def slot(name: str, operator: str, value: Any, strength: str, label: str) -> dict[str, Any]:
@@ -859,6 +856,9 @@ TAXONOMY_SPEECH_SYNONYMS = {
     "奶粉": "婴童奶粉",
     "宝宝奶粉": "婴童奶粉",
     "口腔护理": "口腔治疗/护理",
+    "蓝牙耳机": "无线耳机",
+    "行李箱": "旅行箱",
+    "拉杆箱": "旅行箱",
 }
 
 
@@ -1264,20 +1264,119 @@ def intent_api_enabled() -> bool:
     return False
 
 
-def intent_system_prompt() -> str:
-    scenario_tags = list(dict.fromkeys(item[0] for item in COMMODITY_INTENTS))
-    return """你是电商推荐系统的意图结构化引擎。理解用户真正的购物目标，把本轮原话转换为 JSON tag；不按固定短语匹配，禁止推荐商品、解释或 Markdown。
+def category_selection_candidates(transcript: str) -> list[dict[str, str]]:
+    """Build a compact, request-specific list containing only real catalog categories."""
+    normalized = normalize_taxonomy_text(transcript)
+    synonym_targets = {
+        target
+        for spoken, target in TAXONOMY_SPEECH_SYNONYMS.items()
+        if normalize_taxonomy_text(spoken) in normalized
+    }
+    secondary_matches: list[tuple[int, dict[str, str]]] = []
+    for category in TAXONOMY_CATEGORIES:
+        contained = [
+            alias for alias in taxonomy_aliases(category["xcat2"])
+            if alias in normalized
+        ]
+        score = max((100 + len(alias) for alias in contained), default=0)
+        if category["xcat2"] in synonym_targets:
+            score = max(score, 130)
+        if score:
+            secondary_matches.append((score, category))
 
-只输出一个 JSON 对象：
-{"mode":"product|scenario|explore|unknown","type":"pull|exclude|correct|explore|unknown","polarity":"positive|negative|neutral","confidence":0.0,"evidence":["原话短语"],"slots":[{"name":"category|attribute|audience|style|brand|price|priceOrder","operator":"eq|neq|lte|gte","value":"字符串或数字","strength":"hard|soft","label":"简短中文"}],"scenario":{"key":"英文短标识","label":"中文场景","targets":["具体商品"]},"exploreTheme":"主题标识"}
+    candidates: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
 
-判断与提取规则：
-1. 用户指向具体商品或商品约束时用 product；生活事件、活动或需要多类商品共同满足的目标用 scenario，例如留学、搬家、露营、旅行、参加演唱会，即使用户只说“想看相关东西”也属于需要多类商品共同满足的场景；没有具体商品或生活目标、只是开放地发现新奇事物或灵感时才用 explore；与购物无关用 unknown。
-2. scenario 自主选择 3 到 6 个高相关、能在淘宝直接下单的实体商品 tag，并为每个 target 生成一一对应的 category/eq slot；scenario 的 targets 和 category slots 必须且只能从下方“可用商品 tags”中选择。所有 value、label、targets 必须使用简体中文商品名。禁止把抽象目标简单加“用品”二字，禁止输出申请、签证、课程、住宿、机会、信息、服务、流程、证件或非商品材料，也不要为凑数生成弱相关内容。
-3. “不要/少点/排除”用 neq；“以内/以下/不超过”对 price 用 lte；“必须/只看/一定要/预算上限”用 hard，其余通常用 soft。
-4. 用户明确说出的每个商品名都必须保留为 category/eq slot，不能只输出价格或属性。多个正负条件全部保留；只提取用户明确表达或可从生活目标合理推导的条件，不臆造性别、价格、品牌。product 模式没有固定枚举限制，可使用自然、具体的中文商品 tag。
+    def add(level: str, name: str, parent: str = "") -> None:
+        key = (level, parent, name)
+        if key in seen:
+            return
+        candidates.append({
+            "id": f"c{len(candidates) + 1:03d}",
+            "level": level,
+            "name": name,
+            "parent": parent,
+        })
+        seen.add(key)
 
-可用商品 tags：""" + json.dumps(scenario_tags, ensure_ascii=False)
+    for _, category in sorted(
+        secondary_matches,
+        key=lambda item: (-item[0], item[1]["xcat1"], item[1]["xcat2"]),
+    )[:24]:
+        add("xcat2", category["xcat2"], category["xcat1"])
+    non_physical_parents = {
+        "人工智能服务", "医疗及健康服务", "教育培训", "数字生活",
+        "景点门票/演艺演出/周边游", "电影/演出/体育赛事",
+        "本地化生活服务", "商务/设计服务", "个性定制/设计服务/DIY",
+    }
+    for parent in sorted(TAXONOMY_PARENT_NAMES):
+        if parent in non_physical_parents:
+            continue
+        add("xcat1", parent)
+    return candidates
+
+
+def intent_system_prompt(candidates: list[dict[str, str]]) -> str:
+    candidate_lines = [
+        f"{item['id']}|{item['parent'] + ' > ' if item['parent'] else ''}{item['name']}"
+        for item in candidates
+    ]
+    return """从以下现有商品类目中选出对用户本次需求最直接有帮助的 1 个。
+不要选择只是任何人都可能购买、但与本次需求没有直接关系的类目。
+只能返回一个候选编号，不能创造类目。只输出 JSON：{"category_id":"编号"}
+候选类目：
+""" + "\n".join(candidate_lines)
+
+
+CATEGORY_GROUPS = [
+    ("g1", "服装鞋履", "衣服、鞋、内衣、运动服"),
+    ("g2", "数码影音", "手机、电脑、耳机、相机、数码配件"),
+    ("g3", "家居生活", "床品、收纳、清洁、厨房、家电、日用品"),
+    ("g4", "美妆健康", "护肤、彩妆、个护、保健用品"),
+    ("g5", "食品饮料", "零食、生鲜、粮油、茶酒、冲饮"),
+    ("g6", "母婴儿童", "婴童用品、童装童鞋、玩具"),
+    ("g7", "户外运动", "旅行用品、露营、健身、骑行、户外装备"),
+    ("g8", "学习办公", "书籍、文具、学习设备、办公用品"),
+    ("g9", "宠物园艺礼品", "宠物、鲜花、园艺、节庆礼品"),
+    ("g10", "汽车交通", "汽车、摩托车、电动车及配件"),
+    ("g11", "箱包出行", "背包、旅行箱、行李箱、户外包"),
+    ("g12", "首饰配件", "首饰、黄金、手表、眼镜、帽子围巾"),
+]
+
+CATEGORY_GROUP_KEYWORDS = {
+    "g11": ("箱包", "运动包"),
+    "g12": ("珠宝", "饰品", "黄金", "眼镜", "手表", "服饰配件"),
+    "g1": ("女装", "男装", "内衣", "女鞋", "男鞋", "童装", "童鞋", "运动鞋", "运动服", "纺织面料"),
+    "g2": ("3C", "DIY电脑", "二手数码", "台机", "数码相机", "智能设备", "影音", "电玩", "电脑硬件", "网络设备", "闪存卡"),
+    "g3": ("家具", "全屋", "厨房", "大家电", "家居", "家装", "居家", "床上", "清洁", "生活电器", "收纳", "餐饮具", "建材", "搬运", "包装"),
+    "g4": ("药", "保健", "个人护理", "彩妆", "美发", "护肤", "美容", "隐形眼镜", "滋补"),
+    "g5": ("食品", "粮油", "咖啡", "水产", "零食", "茶", "酒"),
+    "g6": ("婴童", "孕妇", "童装", "童鞋", "玩具", "积木", "玩偶"),
+    "g7": ("户外", "运动", "自行车", "骑行"),
+    "g8": ("书籍", "办公", "文具", "教育学习", "乐器"),
+    "g9": ("宠物", "园艺", "鲜花", "节庆", "礼品"),
+    "g10": ("汽车", "摩托车", "电动车", "交通工具", "零部件"),
+}
+
+
+def category_group_for(parent: str) -> str:
+    for group_id, keywords in CATEGORY_GROUP_KEYWORDS.items():
+        if any(keyword in parent for keyword in keywords):
+            return group_id
+    return "g3"
+
+
+def category_group_scoring_prompt(transcript: str) -> str:
+    lines = "\n".join(
+        f"{group_id}|{label}（{description}）"
+        for group_id, label, description in CATEGORY_GROUPS
+    )
+    return f"""用户购物需求：{transcript}
+请分别判断每个现有商品范围能否直接帮助用户完成这个需求。
+0 完全无关，1 仅泛泛相关或非必需，2 有帮助，3 最直接有帮助。
+不要因为任何人都可能买某类商品就给高分。每项独立判断。
+只输出 JSON 对象，键是范围编号，值只能是 0 到 3。
+{lines}"""
 
 
 def extract_json_object(value: Any) -> dict[str, Any]:
@@ -1413,139 +1512,78 @@ def recover_explicit_product_category(transcript: str) -> dict[str, Any] | None:
     return slot("category", "eq", value, "hard", display)
 
 
-def normalize_api_intent(raw: dict[str, Any], transcript: str) -> dict[str, Any]:
-    mode = str(raw.get("mode", "unknown")).strip().lower()
-    if mode not in ("product", "scenario", "explore", "unknown"):
-        raise IntentAPIError("模型返回了不支持的 mode")
-    slots = normalize_api_slots(raw.get("slots", []))
-    if mode == "product" and not any(
-        item["name"] in ("category", "xcat1", "xcat2") and item["operator"] == "eq"
-        for item in slots
-    ):
-        recovered_category = recover_explicit_product_category(transcript)
-        if recovered_category:
-            slots.insert(0, recovered_category)
-    scenario_payload = raw.get("scenario") if isinstance(raw.get("scenario"), dict) else {}
-    explore_theme = str(raw.get("exploreTheme", "fresh")).strip()[:40] or "fresh"
+def normalize_api_intent(
+    raw: dict[str, Any],
+    transcript: str,
+    candidates: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    candidates = candidates or category_selection_candidates(transcript)
+    candidate_by_id = {item["id"]: item for item in candidates}
 
-    if mode == "scenario":
-        scenario_key = str(scenario_payload.get("key", "custom")).strip()[:40] or "custom"
-        scenario_label = str(scenario_payload.get("label", "场景需求")).strip()[:40] or "场景需求"
-        allowed_targets = {item[0] for item in COMMODITY_INTENTS}
-        slots = [
-            item for item in slots
-            if not (
-                item["name"] == "category"
-                and item["operator"] == "eq"
-                and item["value"] not in allowed_targets
-            )
+    def selected(field: str, operator: str) -> list[dict[str, Any]]:
+        values = raw.get(field, [])
+        if not isinstance(values, list):
+            values = []
+        result: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for candidate_id in values[:5]:
+            candidate = candidate_by_id.get(str(candidate_id).strip())
+            if not candidate:
+                continue
+            key = (candidate["level"], candidate["name"])
+            if key in seen:
+                continue
+            label = candidate["name"] if operator == "eq" else f"少看{candidate['name']}"
+            result.append(slot(candidate["level"], operator, candidate["name"], "soft", label))
+            seen.add(key)
+        return result
+
+    include_slots = selected("include_ids", "eq")
+    if not include_slots:
+        preferred = ("居家日用", "生活电器", "零食/坚果/特产")
+        fallback = [item for name in preferred for item in candidates if item["name"] == name]
+        include_slots = [
+            slot(item["level"], "eq", item["name"], "soft", item["name"])
+            for item in fallback[:3]
         ]
-        raw_targets = scenario_payload.get("targets", [])
-        if not isinstance(raw_targets, list):
-            raw_targets = []
-        targets = [
-            str(value).strip() for value in raw_targets
-            if isinstance(value, str) and str(value).strip() in allowed_targets
-        ][:6]
-        targets = list(dict.fromkeys(targets))
-        existing_targets = {
-            item["value"] for item in slots
-            if item["name"] == "category" and item["operator"] == "eq"
-        }
-        for target in targets:
-            if target not in existing_targets:
-                slots.append({
-                    **slot("category", "eq", target, "soft", target),
-                    "sourceMode": "scenario",
-                    "sourceKey": scenario_key,
-                })
-        for item in slots:
-            if item["name"] == "category" and item["operator"] == "eq":
-                item.setdefault("sourceMode", "scenario")
-                item.setdefault("sourceKey", scenario_key)
-        if not targets:
-            targets = [
-                str(item["value"]) for item in slots
-                if item.get("sourceMode") == "scenario" and item["operator"] == "eq"
-            ]
-        if targets:
-            scenario_payload = {"key": scenario_key, "label": scenario_label, "targets": targets}
-        else:
-            mode = "unknown"
-            slots = []
-    elif mode == "explore":
-        if not slots:
-            slots = [{
-                **slot("attribute", "eq", "新鲜感", "soft", "发现新鲜事物"),
-                "sourceMode": "explore",
-                "sourceKey": explore_theme,
-            }]
-        for item in slots:
-            item.setdefault("sourceMode", "explore")
-            item.setdefault("sourceKey", explore_theme)
-    elif mode == "unknown":
-        slots = []
-    elif not slots:
-        mode = "unknown"
+    slots = include_slots + selected("exclude_ids", "neq")
 
-    raw_type = str(raw.get("type", "")).strip().lower()
-    if mode == "explore":
-        raw_type = "explore"
-    elif mode == "unknown":
-        raw_type = "unknown"
-    elif mode == "scenario":
-        raw_type = "pull"
-    elif raw_type not in ("pull", "exclude", "correct"):
-        raw_type = (
-            "exclude" if any(item["operator"] == "neq" for item in slots) else
-            "pull"
-        )
-    polarity = str(raw.get("polarity", "")).strip().lower()
-    if mode in ("explore", "unknown"):
-        polarity = "neutral"
-    elif mode == "scenario":
-        polarity = "positive"
-    elif polarity not in ("positive", "negative"):
-        polarity = "negative" if any(item["operator"] == "neq" for item in slots) else "positive"
-    try:
-        confidence = max(0.0, min(1.0, float(raw.get("confidence", 0.8))))
-    except (TypeError, ValueError):
-        confidence = 0.8
-    evidence = raw.get("evidence", [])
-    if not isinstance(evidence, list):
-        evidence = []
-    evidence = [str(value).strip()[:40] for value in evidence if str(value).strip()][:4]
+    for field, operator in (("price_lte", "lte"), ("price_gte", "gte")):
+        value = raw.get(field)
+        if isinstance(value, str):
+            match = re.search(r"\d+(?:\.\d+)?", value)
+            value = float(match.group()) if match else None
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+            value = int(value) if float(value).is_integer() else float(value)
+            slots.append(slot("price", operator, value, "hard", default_slot_label("price", operator, value)))
 
-    route_specs = {
-        "product": ("constraint_ranking", "商品约束排序", "按 API 提取的商品 tag 进行约束筛选与排序"),
-        "scenario": ("scenario_bundle", "场景商品组合", f"把“{scenario_payload.get('label', '场景需求')}”拆成商品组合"),
-        "explore": ("inspiration_discovery", "灵感启发推荐", "按 API 识别的探索主题增加新鲜度、趋势性与跨品类多样性"),
-        "unknown": ("clarification", "等待补充", "请补充商品、生活场景，或直接说想探索什么"),
-    }
-    route_name, route_label, route_summary = route_specs[mode]
+    names = [item["value"] for item in include_slots]
     result = {
-        "type": raw_type,
-        "polarity": polarity,
+        "type": "pull",
+        "polarity": "positive",
         "slots": slots,
         "scope": "session",
         "transcript": transcript,
+        "selectedCategories": names,
         **mode_payload(
-            mode,
-            confidence=confidence,
-            evidence=evidence,
-            route_name=route_name,
-            route_label=route_label,
-            route_summary=route_summary,
+            "product",
+            confidence=0.9,
+            evidence=[transcript[:40]],
+            route_name="category_selection",
+            route_label="相关商品",
+            route_summary=f"优先推荐：{'、'.join(names)}",
         ),
     }
-    if mode == "scenario":
-        result["scenario"] = scenario_payload
-    if mode == "explore":
-        result["exploreTheme"] = explore_theme
-    xcat1 = next((item["value"] for item in slots if item["name"] == "xcat1" and item["operator"] == "eq"), None)
-    xcat2 = next((item["value"] for item in slots if item["name"] == "xcat2" and item["operator"] == "eq"), None)
-    if xcat1:
-        result["taxonomy"] = {"xcat1": xcat1, "xcat2": xcat2}
+    if len(include_slots) == 1:
+        only = include_slots[0]
+        if only["name"] == "xcat1":
+            result["taxonomy"] = {"xcat1": only["value"], "xcat2": None}
+        elif only["name"] == "xcat2":
+            candidate = next(
+                item for item in candidates
+                if item["level"] == "xcat2" and item["name"] == only["value"]
+            )
+            result["taxonomy"] = {"xcat1": candidate["parent"], "xcat2": only["value"]}
     return result
 
 
@@ -1584,7 +1622,7 @@ def call_whale_chat(
         messages=messages,
         stream=False,
         temperature=0,
-        max_tokens=512,
+        max_tokens=160,
         timeout=timeout,
     )
 
@@ -1663,6 +1701,100 @@ def extract_whale_intent_payload(response: Any) -> dict[str, Any]:
     return extract_json_object(content)
 
 
+def call_category_selector(
+    prompt: str,
+    *,
+    api_key: str,
+    model: str,
+    timeout: float,
+    base_url: str,
+) -> dict[str, Any]:
+    response = call_whale_chat(
+        api_key=api_key,
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        timeout=timeout,
+        base_url=base_url or None,
+    )
+    return extract_whale_intent_payload(response)
+
+
+def select_category_ids_with_api(
+    transcript: str,
+    candidates: list[dict[str, str]],
+    *,
+    api_key: str,
+    model: str,
+    timeout: float,
+    base_url: str,
+) -> list[str]:
+    secondary = [item for item in candidates if item["level"] == "xcat2"]
+    if secondary:
+        raw = call_category_selector(
+            f"用户购物需求：{transcript}\n{intent_system_prompt(secondary)}",
+            api_key=api_key,
+            model=model,
+            timeout=timeout,
+            base_url=base_url,
+        )
+        selected_id = str(raw.get("category_id", "")).strip()
+        return [selected_id] if any(item["id"] == selected_id for item in secondary) else []
+
+    group_scores = call_category_selector(
+        category_group_scoring_prompt(transcript),
+        api_key=api_key,
+        model=model,
+        timeout=timeout,
+        base_url=base_url,
+    )
+    scored_groups: list[tuple[int, str]] = []
+    valid_groups = {item[0] for item in CATEGORY_GROUPS}
+    for group_id, value in group_scores.items():
+        if group_id not in valid_groups:
+            continue
+        try:
+            score = max(0, min(3, int(value)))
+        except (TypeError, ValueError):
+            continue
+        scored_groups.append((score, group_id))
+    scored_groups.sort(key=lambda item: (-item[0], item[1]))
+    strongest = [item for item in scored_groups if item[0] == 3][:4]
+    if not strongest:
+        strongest = [item for item in scored_groups if item[0] >= 2][:2]
+    if not strongest and scored_groups:
+        strongest = scored_groups[:1]
+
+    group_candidates: list[tuple[str, list[dict[str, str]]]] = []
+    for _, group_id in strongest:
+        options = [
+            item for item in candidates
+            if item["level"] == "xcat1" and category_group_for(item["name"]) == group_id
+        ]
+        if options:
+            group_candidates.append((group_id, options))
+
+    def select_one(item: tuple[str, list[dict[str, str]]]) -> str:
+        _, options = item
+        try:
+            raw = call_category_selector(
+                f"用户购物需求：{transcript}\n{intent_system_prompt(options)}",
+                api_key=api_key,
+                model=model,
+                timeout=timeout,
+                base_url=base_url,
+            )
+        except Exception:
+            return ""
+        selected_id = str(raw.get("category_id", "")).strip()
+        return selected_id if any(option["id"] == selected_id for option in options) else ""
+
+    if not group_candidates:
+        return []
+    with ThreadPoolExecutor(max_workers=min(4, len(group_candidates))) as executor:
+        selected_ids = list(executor.map(select_one, group_candidates))
+    return list(dict.fromkeys(value for value in selected_ids if value))
+
+
 def parse_intent_with_api(transcript: str) -> dict[str, Any]:
     api_key = first_env("INTENT_API_KEY", "WHALE_API_KEY")
     model = first_env("INTENT_API_MODEL", "WHALE_API_MODEL")
@@ -1673,24 +1805,28 @@ def parse_intent_with_api(transcript: str) -> dict[str, Any]:
         timeout = float(os.environ.get("INTENT_API_TIMEOUT", "20"))
     except ValueError as exc:
         raise IntentAPIError("INTENT_API_TIMEOUT 必须是数字") from exc
-    messages = [
-        {"role": "system", "content": intent_system_prompt()},
-        {"role": "user", "content": transcript},
-    ]
+    candidates = category_selection_candidates(transcript)
     try:
-        response = call_whale_chat(
+        selected_ids = select_category_ids_with_api(
+            transcript,
+            candidates,
             api_key=api_key,
             model=model,
-            messages=messages,
             timeout=timeout,
-            base_url=base_url or None,
+            base_url=base_url,
         )
     except IntentAPIError:
         raise
     except Exception as exc:
         detail = str(exc).replace(api_key, "***")[:300]
         raise IntentAPIError(f"Whale 意图识别调用失败：{detail}") from exc
-    return normalize_api_intent(extract_whale_intent_payload(response), transcript)
+    raw: dict[str, Any] = {"include_ids": selected_ids, "exclude_ids": []}
+    rule_slots = parse_intent_with_rules(transcript).get("slots", [])
+    for condition in rule_slots:
+        if condition["name"] != "price":
+            continue
+        raw["price_lte" if condition["operator"] == "lte" else "price_gte"] = condition["value"]
+    return normalize_api_intent(raw, transcript, candidates)
 
 
 def parse_intent(transcript: str) -> dict[str, Any]:
@@ -1706,6 +1842,17 @@ def condition_key(condition: dict[str, Any]) -> tuple[str, Any]:
 def merge_conditions(existing: list[dict[str, Any]], intent: dict[str, Any]) -> list[dict[str, Any]]:
     merged = [dict(item) for item in existing]
     incoming_slots = intent.get("slots", [])
+    if any(
+        item["name"] in ("xcat1", "xcat2") and item["operator"] == "eq"
+        for item in incoming_slots
+    ):
+        merged = [
+            item for item in merged
+            if not (
+                item["name"] in ("category", "xcat1", "xcat2")
+                and item["operator"] == "eq"
+            )
+        ]
     for incoming in incoming_slots:
         opposite = "neq" if incoming["operator"] == "eq" else "eq" if incoming["operator"] == "neq" else None
         merged = [
@@ -1778,7 +1925,19 @@ def rank_product_results(scene: str, conditions: list[dict[str, Any]]) -> dict[s
     taxonomy_conditions = [
         item for item in conditions if item["name"] in ("xcat1", "xcat2")
     ]
-    candidates = TAXONOMY_PRODUCTS if taxonomy_conditions else PRODUCTS
+    raw_positive_taxonomy = [item for item in taxonomy_conditions if item["operator"] == "eq"]
+    selected_xcat2 = {item["value"] for item in raw_positive_taxonomy if item["name"] == "xcat2"}
+    selected_xcat2_parents = {
+        category["xcat1"]
+        for category in TAXONOMY_CATEGORIES
+        if category["xcat2"] in selected_xcat2
+    }
+    positive_taxonomy = [
+        item for item in raw_positive_taxonomy
+        if item["name"] == "xcat2" or item["value"] not in selected_xcat2_parents
+    ]
+    negative_taxonomy = [item for item in taxonomy_conditions if item["operator"] == "neq"]
+    candidates = TAXONOMY_PRODUCTS
     for item in candidates:
         if (
             scene == "search"
@@ -1806,16 +1965,24 @@ def rank_product_results(scene: str, conditions: list[dict[str, Any]]) -> dict[s
         scored.append((score, item))
 
     scored.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
-    exact_requirements = [*hard, *taxonomy_conditions]
-    exact = [
-        item["id"]
-        for _, item in scored
-        if all(product_matches(item, condition) for condition in exact_requirements)
-    ]
     positive_categories = [
         condition
         for condition in conditions
         if condition["name"] == "category" and condition["operator"] == "eq"
+    ]
+    exact_requirements = [
+        *[item for item in hard if item not in positive_taxonomy],
+        *negative_taxonomy,
+        *positive_categories,
+    ]
+    exact = [
+        item["id"]
+        for _, item in scored
+        if all(product_matches(item, condition) for condition in exact_requirements)
+        and (
+            not positive_taxonomy
+            or any(product_matches(item, condition) for condition in positive_taxonomy)
+        )
     ]
     if scene == "recommend" and len(positive_categories) > 1:
         remaining = list(exact)
@@ -1835,19 +2002,26 @@ def rank_product_results(scene: str, conditions: list[dict[str, Any]]) -> dict[s
                 break
         exact = interleaved + remaining
     near = [item["id"] for _, item in scored if item["id"] not in exact]
-    positive_xcat1 = next(
-        (
-            condition
-            for condition in taxonomy_conditions
-            if condition["name"] == "xcat1" and condition["operator"] == "eq"
-        ),
-        None,
-    )
-    positive_xcat2 = any(
-        condition["name"] == "xcat2" and condition["operator"] == "eq"
-        for condition in taxonomy_conditions
-    )
-    if positive_xcat1 and not positive_xcat2:
+    if len(positive_taxonomy) > 1:
+        remaining = list(exact)
+        interleaved = []
+        while remaining:
+            added = False
+            for condition in positive_taxonomy:
+                next_id = next(
+                    (item_id for item_id in remaining if product_matches(PRODUCT_BY_ID[item_id], condition)),
+                    None,
+                )
+                if next_id is not None:
+                    remaining.remove(next_id)
+                    interleaved.append(next_id)
+                    added = True
+            if not added:
+                break
+        exact = interleaved + remaining
+    positive_xcat1 = next((item for item in positive_taxonomy if item["name"] == "xcat1"), None)
+    positive_xcat2 = any(item["name"] == "xcat2" for item in positive_taxonomy)
+    if len(positive_taxonomy) == 1 and positive_xcat1 and not positive_xcat2:
         remaining = list(exact)
         child_names = list(dict.fromkeys(PRODUCT_BY_ID[item_id]["xcat2"] for item_id in remaining))
         interleaved = []
@@ -1899,7 +2073,7 @@ def rank_scenario_results(
     refinements = [item for item in conditions if item not in scenario_conditions]
     hard_refinements = [item for item in refinements if item["strength"] == "hard"]
     scored: list[tuple[float, dict[str, Any]]] = []
-    for item in PRODUCTS:
+    for item in TAXONOMY_PRODUCTS:
         target_indexes = [index for index, target in enumerate(targets) if product_contains_value(item, target)]
         if not target_indexes:
             continue
@@ -1964,7 +2138,7 @@ def rank_explore_results(
     refinements = [item for item in conditions if item.get("sourceMode") != "explore"]
     hard = [item for item in refinements if item["strength"] == "hard"]
     scored: list[tuple[float, dict[str, Any]]] = []
-    for item in PRODUCTS:
+    for item in TAXONOMY_PRODUCTS:
         if scene == "search" and not all(tag in item["attributes"] for tag in ("男款", "白色", "运动鞋")):
             continue
         if not all(product_matches(item, condition) for condition in hard):
@@ -2066,7 +2240,10 @@ def rank_results_for_display(
 
 def feedback_for(intent: dict[str, Any]) -> str:
     if intent["type"] == "unknown":
-        return "我还没听懂。可以说具体商品、要完成的场景，或想探索的新灵感。"
+        return "先为你推荐一些热门好物，你也可以继续补充偏好"
+    selected_categories = intent.get("selectedCategories", [])
+    if selected_categories:
+        return f"已按这些类目为你推荐：{'、'.join(selected_categories)}"
     labels = [item["label"] for item in intent.get("slots", [])]
     if "减少跑鞋" in labels and "增加家居" in labels:
         return "已为你减少跑鞋，增加收纳与家居好物"
@@ -2093,7 +2270,7 @@ def products_for_ranked_results(ranked: dict[str, list[str]]) -> list[dict[str, 
     return [
         PRODUCT_BY_ID[item_id]
         for item_id in dict.fromkeys(result_ids)
-        if item_id.startswith("tax-")
+        if item_id in PRODUCT_BY_ID
     ]
 
 

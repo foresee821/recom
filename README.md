@@ -52,12 +52,12 @@ INTENT_API_TIMEOUT=20
 
 线上环境可将 `INTENT_API_URL` 留空，由 SDK 通过 VipServer 发现接入层；本地无法使用 VipServer 时，按 Whale 文档填写固定接入层地址。`.env` 已被 Git 忽略。
 
-商品库由两部分组成：246 件高保真路演商品，以及根据 DataWorks 一级/二级品类表生成的 13,410 件长尾商品。品类表包含 148 个一级品类和 1,341 个唯一一级/二级组合，每个组合固定生成 10 件商品。语音会先解析到对应 `xcat1`、`xcat2`，再从大库动态返回本次需要的商品，不会把 13,000 多件商品全部下发到首页。
+首页推荐与意图商品库相互独立。首页继续按轮次加载自己的推荐数据；语音与文字意图只使用 CSV 导入的真实淘宝商品，不再混用旧 Demo 商品或模板商品。当前意图库按一级类目拆分，浏览器只会加载命中类目的分片。
 
-清洗后的品类数据位于 `data/category_taxonomy.json`，生成商品位于 `data/category_products.json`。如需根据品类表重新生成商品库：
+导入新 CSV 会同步生成后端商品数据、前端类目索引、一级类目分片和露营场景商品：
 
 ```bash
-python3 scripts/build_taxonomy_catalog.py
+python3 scripts/import_catalog_csv.py /path/to/flat_items_filtered.csv
 ```
 
 系统支持正负向条件、连续修改、同义口语、一级品类多样推荐、二级品类精确推荐和跨一级重名二级品类消歧。六个语音预制 Case 均至少返回 10 件带本地图片的商品；Excel 生成商品按当前 Demo 要求复用本地占位图。

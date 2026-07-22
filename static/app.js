@@ -58,6 +58,8 @@ const state = {
   homeCatalogPreloadRound: -1,
   homeCatalogPreloadImages: [],
   intentCatalogCache: new Map(),
+  categoryCatalogIndex: null,
+  categoryCatalogShardCache: new Map(),
   activeIntentProductIds: [],
 };
 
@@ -302,10 +304,18 @@ function rankHomeCatalogForIntent(conditions, limit = 60) {
     ["category", "xcat1", "xcat2", "price"].includes(condition.name),
   );
   if (!catalogConditions.length || !state.homeCatalogProducts.length) return [];
-  const matches = state.homeCatalogProducts.filter((item) => !hiddenHomepageProductIds.has(item.id) && catalogConditions.every((condition) => {
-    const matched = homeCatalogMatchesCondition(item, condition);
-    return condition.operator === "neq" ? !matched : matched;
-  }));
+  const positiveCategories = catalogConditions.filter((condition) =>
+    condition.operator !== "neq" && ["category", "xcat1", "xcat2"].includes(condition.name),
+  );
+  const otherConditions = catalogConditions.filter((condition) => !positiveCategories.includes(condition));
+  const matches = state.homeCatalogProducts.filter((item) =>
+    !hiddenHomepageProductIds.has(item.id)
+    && (!positiveCategories.length || positiveCategories.some((condition) => homeCatalogMatchesCondition(item, condition)))
+    && otherConditions.every((condition) => {
+      const matched = homeCatalogMatchesCondition(item, condition);
+      return condition.operator === "neq" ? !matched : matched;
+    }),
+  );
   matches.sort((left, right) => (right.ordercost || 0) - (left.ordercost || 0));
   for (const item of matches.slice(0, limit)) state.products.set(item.id, item);
   return matches.slice(0, limit).map((item) => item.id);
@@ -350,6 +360,140 @@ async function intentCatalogProductIds(transcript, conditions) {
   const products = state.intentCatalogCache.get("camping");
   for (const item of products) state.products.set(item.id, item);
   return products.map((item) => item.id);
+}
+
+async function loadCategoryCatalogIndex() {
+  if (state.categoryCatalogIndex) return state.categoryCatalogIndex;
+  const response = await fetch("data/intent-catalog/index.json", { cache: "no-store" });
+  if (!response.ok) throw new Error("意图商品索引加载失败");
+  state.categoryCatalogIndex = await response.json();
+  return state.categoryCatalogIndex;
+}
+
+function normalizedCatalogText(value) {
+  return String(value || "").replace(/[\s，。！？、,.!?“”"'：:；()（）/]/g, "");
+}
+
+const categoryConceptAliases = {
+  "脖子上戴的饰品": ["项链", "项坠/吊坠"],
+  "脖子戴的": ["项链", "项坠/吊坠"],
+  "吊坠": ["项坠/吊坠", "项链"],
+  "露营装备": ["露营/野炊装备"],
+  "野营装备": ["露营/野炊装备"],
+  "瑜伽裤": ["瑜伽服", "运动长裤"],
+  "通勤裤": ["西装裤/正装裤", "休闲裤", "牛仔裤"],
+};
+
+function categoryMatchScore(transcript, category) {
+  const query = normalizedCatalogText(transcript);
+  const full = normalizedCatalogText(category.xcat2);
+  if (!query || !full) return 0;
+  if (query === full) return 120 + full.length;
+  if (query.includes(full)) return 105 + full.length;
+  const parts = String(category.xcat2 || "")
+    .split(/[\/／、|()（）\s]+/)
+    .map(normalizedCatalogText)
+    .filter((part) => part.length >= 2);
+  const partScores = parts.map((part) => {
+    if (query.includes(part)) return 88 + part.length;
+    if (query.length >= 2 && part.includes(query)) return 76 + query.length;
+    return 0;
+  });
+  let score = Math.max(0, ...partScores);
+  for (const [phrase, targets] of Object.entries(categoryConceptAliases)) {
+    if (query.includes(normalizedCatalogText(phrase)) && targets.includes(category.xcat2)) {
+      score = Math.max(score, 98 - targets.indexOf(category.xcat2));
+    }
+  }
+  return score;
+}
+
+function interleaveCategoryProducts(groups, limit = 80) {
+  const result = [];
+  for (let index = 0; result.length < limit && groups.some((items) => index < items.length); index += 1) {
+    for (const items of groups) {
+      if (items[index]) result.push(items[index]);
+      if (result.length >= limit) break;
+    }
+  }
+  return result;
+}
+
+async function categoryCatalogProducts(transcript, conditions) {
+  const index = await loadCategoryCatalogIndex();
+  const positives = (conditions || []).filter((condition) =>
+    condition.operator !== "neq" && ["xcat1", "xcat2"].includes(condition.name),
+  );
+  let matches = [];
+  if (positives.length) {
+    for (const condition of positives) {
+      const selected = index.categories
+        .filter((item) => condition.name === "xcat2"
+          ? item.xcat2 === condition.value
+          : item.xcat1 === condition.value)
+        .sort((left, right) => right.count - left.count)
+        .slice(0, condition.name === "xcat2" ? 1 : 4);
+      matches.push(...selected);
+    }
+    matches = matches.filter((item, position, all) =>
+      all.findIndex((candidate) => candidate.shard === item.shard) === position,
+    );
+  }
+  if (!matches.length) {
+    const scored = index.categories
+      .map((item) => ({ item, score: categoryMatchScore(transcript, item) }))
+      .filter(({ score }) => score >= 76)
+      .sort((left, right) => right.score - left.score || right.item.count - left.item.count);
+    if (scored.length) {
+      const bestScore = scored[0].score;
+      matches = scored.filter(({ score }) => score >= bestScore - 3).slice(0, 5).map(({ item }) => item);
+    }
+  }
+  if (!matches.length) return { ids: [], matches: [] };
+  const version = encodeURIComponent(index.version || "latest");
+  for (const shard of new Set(matches.map((item) => item.shard))) {
+    if (state.categoryCatalogShardCache.has(shard)) continue;
+    const response = await fetch(`data/intent-catalog/shards/${shard}?v=${version}`, { cache: "no-cache" });
+    if (!response.ok) throw new Error("类目商品加载失败");
+    const payload = await response.json();
+    state.categoryCatalogShardCache.set(shard, payload.products || []);
+  }
+  const groups = matches.map((match) => state.categoryCatalogShardCache.get(match.shard)
+    .filter((item) => !String(item.title || "").includes("测试商品请不要拍"))
+    .filter((item) => item.xcat1 === match.xcat1 && item.xcat2 === match.xcat2)
+    .sort((left, right) => (right.ordercost || 0) - (left.ordercost || 0)));
+  const products = interleaveCategoryProducts(groups);
+  for (const item of products) state.products.set(item.id, item);
+  return { ids: products.map((item) => item.id), matches };
+}
+
+function applyCategoryCatalogFallback(result, catalogResult) {
+  if (result.intent.type !== "unknown" || !catalogResult.ids.length) return;
+  const names = [...new Set(catalogResult.matches.map((item) => item.xcat2))];
+  const condition = {
+    name: "xcat2", operator: "eq", value: names[0],
+    strength: "soft", label: names.join("、"),
+  };
+  result.intent = { type: "pull", mode: "product", modeLabel: "商品意图", slots: [condition] };
+  result.sessionIntent = [
+    ...state.sessionIntent.filter((item) => !["category", "xcat1", "xcat2"].includes(item.name)),
+    condition,
+  ];
+  result.feedback = `已为你找到${names.join("、")}商品`;
+}
+
+function applyIntentCatalogFallback(result, intentCatalogIds) {
+  if (result.intent.type !== "unknown" || !intentCatalogIds.length) return;
+  const condition = {
+    name: "category", operator: "eq", value: "露营", strength: "soft",
+    label: "露营好物", sourceMode: "scenario", sourceKey: "camping",
+  };
+  result.intent = { type: "pull", mode: "scenario", modeLabel: "场景意图", slots: [condition] };
+  result.sessionIntent = [
+    ...state.sessionIntent.filter((item) => item.sourceKey !== "camping"),
+    condition,
+  ];
+  result.feedback = "已为你准备露营好物";
 }
 
 function preloadNextHomepageRound() {
@@ -764,6 +908,10 @@ async function applyTranscript(transcript) {
         sessionIntent: state.sessionIntent,
       }),
     });
+    const categoryCatalog = await categoryCatalogProducts(transcript, result.sessionIntent || []);
+    applyCategoryCatalogFallback(result, categoryCatalog);
+    const intentCatalogIds = await intentCatalogProductIds(transcript, result.sessionIntent || []);
+    applyIntentCatalogFallback(result, intentCatalogIds);
     if (!applyHomeCatalogIntentFallback(result, transcript)) {
       els.transcript.textContent = result.feedback;
       return;
@@ -771,11 +919,11 @@ async function applyTranscript(transcript) {
     (result.products || []).forEach((item) => state.products.set(item.id, item));
     state.sessionIntent = result.sessionIntent;
     if (state.scene === "recommend") {
-      const intentCatalogIds = await intentCatalogProductIds(transcript, result.sessionIntent);
       state.activeIntentProductIds = intentCatalogIds;
       const catalogIds = rankHomeCatalogForIntent(result.sessionIntent);
       state.recommendationIds = usableResultIds(
         intentCatalogIds,
+        categoryCatalog.ids,
         catalogIds,
         result.resultIds,
         result.nearMatchIds,

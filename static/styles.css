@@ -75,13 +75,15 @@ button { border: 0; cursor: pointer; }
 .channel-grid { display:grid; grid-template-columns:repeat(5,1fr); padding:9px 1px 8px; border-radius:9px; background:#fff; }
 .channel-grid button { display:grid; justify-items:center; gap:4px; min-width:0; padding:0; background:transparent; color:#272229; font-size:10px; }
 .channel-grid span { position:relative; display:grid; place-items:center; width:42px; height:38px; border-radius:12px; background-image:none; color:#fff; font-size:21px; font-weight:900; line-height:1; }
+.channel-grid span>svg { width:34px; height:31px; overflow:visible; fill:none; stroke:currentColor; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; }
 .channel-grid span>i { position:absolute; z-index:2; top:-4px; right:-9px; padding:2px 4px; border-radius:7px; background:#ef7953; color:#fff; font:700 7px/1 "PingFang SC",sans-serif; white-space:nowrap; }
 .channel-grid b { max-width:66px; overflow:hidden; white-space:nowrap; font-size:10px; font-weight:520; }
-.icon-farm { border-radius:18px 18px 10px!important; background:linear-gradient(145deg,#53d679,#30b764); text-shadow:0 1px 0 rgba(0,0,0,.05); }
-.icon-hema { border-radius:50%!important; background:linear-gradient(145deg,#d9f6ff,#86d6fb); color:#163f87!important; font-size:8px!important; line-height:1.05!important; text-align:center; }
-.icon-hema::before { content:"⌁"; position:absolute; top:-6px; color:#48bde9; font-size:22px; transform:rotate(-12deg); }
-.icon-sign { border-radius:9px!important; background:linear-gradient(145deg,#ef4942,#cf282d); font-size:24px!important; }
-.icon-category { border-radius:50%!important; background:linear-gradient(145deg,#d916c5,#7524c6); font-size:25px!important; }
+.channel-grid .icon-farm { border-radius:18px 18px 10px!important; background-color:#30b764; background-image:linear-gradient(145deg,#53d679,#30b764); text-shadow:0 1px 0 rgba(0,0,0,.05); }
+.channel-grid .icon-hema { border-radius:50%!important; background-color:#b6e9ff; background-image:linear-gradient(145deg,#d9f6ff,#86d6fb); color:#163f87!important; font-size:8px!important; line-height:1.05!important; text-align:center; }
+.icon-hema small { position:absolute; bottom:3px; color:#163f87; font:800 7px/1 "PingFang SC",sans-serif; white-space:nowrap; }
+.icon-hema svg { position:absolute; top:0; width:31px!important; height:27px!important; }
+.channel-grid .icon-sign { border-radius:9px!important; background-color:#df3033; background-image:linear-gradient(145deg,#ef4942,#cf282d); font-size:24px!important; }
+.channel-grid .icon-category { border-radius:50%!important; background-color:#a31fc5; background-image:linear-gradient(145deg,#d916c5,#7524c6); font-size:25px!important; }
 .icon-channels { grid-template-columns:1fr 1fr; gap:1px; padding:4px; border-radius:12px!important; background:#fff8df; color:#222!important; }
 .icon-channels>i { position:static!important; display:grid; width:14px; height:13px; padding:0!important; place-items:center; border-radius:50%!important; background:#ffe565!important; font-size:8px!important; font-style:normal!important; line-height:1!important; }
 
