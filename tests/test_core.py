@@ -578,15 +578,15 @@ class RankingTests(unittest.TestCase):
                 )
 
         for filename in (
-            "case-rental-products-v1.png",
-            "case-concert-products-v1.png",
-            "case-happiness-products-v1.png",
-            "case-sunscreen-products-v1.png",
-            "case-diverse-dresses-v1.png",
-            "case-korean-dark-dresses-v1.png",
-            "case-korean-dresses-v1.png",
-            "case-fitness-products-v1.png",
-            "case-eye-catching-products-v1.png",
+            "case-rental-products-v1.jpg",
+            "case-concert-products-v1.jpg",
+            "case-happiness-products-v1.jpg",
+            "case-sunscreen-products-v1.jpg",
+            "case-diverse-dresses-v1.jpg",
+            "case-korean-dark-dresses-v1.jpg",
+            "case-korean-dresses-v1.jpg",
+            "case-fitness-products-v1.jpg",
+            "case-eye-catching-products-v1.jpg",
         ):
             self.assertTrue((app.STATIC_DIR / "assets" / filename).is_file(), filename)
 
@@ -682,9 +682,9 @@ class RankingTests(unittest.TestCase):
                 ]
                 self.assertEqual(len(matching_ids), 2)
 
-        asset = app.STATIC_DIR / "assets" / "common-products-v1.png"
+        asset = app.STATIC_DIR / "assets" / "common-products-v1.jpg"
         self.assertTrue(asset.is_file())
-        self.assertGreater(asset.stat().st_size, 100_000)
+        self.assertGreater(asset.stat().st_size, 20_000)
 
     def test_specific_common_product_stays_ahead_of_context_and_audience_words(self):
         cases = {

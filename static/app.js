@@ -117,15 +117,15 @@ const productSpritePanels = {
 };
 
 const caseSpriteSources = {
-  rental: "assets/case-rental-products-v1.png",
-  concert: "assets/case-concert-products-v1.png",
-  happy: "assets/case-happiness-products-v1.png",
-  sunscreen: "assets/case-sunscreen-products-v1.png",
-  dressbase: "assets/case-diverse-dresses-v1.png",
-  dresskorean: "assets/case-korean-dark-dresses-v1.png",
-  dresscase: "assets/case-korean-dresses-v1.png",
-  fitcase: "assets/case-fitness-products-v1.png",
-  wow: "assets/case-eye-catching-products-v1.png",
+  rental: "assets/case-rental-products-v1.jpg",
+  concert: "assets/case-concert-products-v1.jpg",
+  happy: "assets/case-happiness-products-v1.jpg",
+  sunscreen: "assets/case-sunscreen-products-v1.jpg",
+  dressbase: "assets/case-diverse-dresses-v1.jpg",
+  dresskorean: "assets/case-korean-dark-dresses-v1.jpg",
+  dresscase: "assets/case-korean-dresses-v1.jpg",
+  fitcase: "assets/case-fitness-products-v1.jpg",
+  wow: "assets/case-eye-catching-products-v1.jpg",
 };
 
 const hiddenHomepageProductIds = new Set([
@@ -160,7 +160,7 @@ function commonSpriteFor(productId) {
   const column = index % 5;
   const row = Math.floor(index / 5);
   return {
-    image: "assets/common-products-v1.png",
+    image: "assets/common-products-v1.jpg",
     position: `${column * 25}% ${row * 25}%`,
   };
 }
@@ -921,9 +921,15 @@ async function init() {
     renderIntents();
     renderExamples();
     bindEvents();
-    loadHomepageCatalog().catch((error) => {
-      console.warn("长尾首页商品加载失败，继续使用基础商品：", error);
-    });
+    const loadCatalogAfterFirstPaint = () => {
+      setTimeout(() => {
+        loadHomepageCatalog().catch((error) => {
+          console.warn("长尾首页商品加载失败，继续使用基础商品：", error);
+        });
+      }, 500);
+    };
+    if (document.readyState === "complete") loadCatalogAfterFirstPaint();
+    else window.addEventListener("load", loadCatalogAfterFirstPaint, { once: true });
   } catch (error) {
     showToast(`Demo 加载失败：${error.message}`);
   }

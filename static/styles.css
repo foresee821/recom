@@ -92,14 +92,14 @@ button { border: 0; cursor: pointer; }
 .operation-card header span { color:#28a464; font-size:8px; }
 .live-card header span { padding:2px 4px; border-radius:4px; background:#fb3660; color:#fff; }
 .flash-card header span { color:#f0443a; }
-.op-photo,.product-photo { background-image:url('assets/taobao-products-v1.png'); background-repeat:no-repeat; background-size:200% 300%; }
+.op-photo,.product-photo { background-image:url('assets/taobao-products-v1.jpg'); background-repeat:no-repeat; background-size:200% 300%; }
 .op-photo { height:82px; background-color:#f5f3f2; }
 .op-photo-fashion { position:relative; background-position:0 50%; }
 .op-photo-fashion::after { content:""; position:absolute; inset:0; background:linear-gradient(transparent 55%,rgba(0,0,0,.45)); }
 .op-photo-fashion i { position:absolute; z-index:1; right:5px; bottom:5px; padding:2px 4px; border-radius:5px; background:#ff2850; color:#fff; font-size:7px; font-style:normal; }
 .op-photo-jewel { background-position:100% 50%; }
 .op-photo-polo { background-position:0 0; }
-.op-photo-jar,.op-photo-beauty { background-image:url('assets/catalog-products-v1.png'); background-size:400% 400%; }
+.op-photo-jar,.op-photo-beauty { background-image:url('assets/catalog-products-v1.jpg'); background-size:400% 400%; }
 .op-photo-jar { background-position:100% 66.667%; }
 .op-photo-shoes { background-position:100% 100%; }
 .op-photo-beauty { background-position:0 0; }
@@ -140,7 +140,7 @@ button { border: 0; cursor: pointer; }
 .product-photo.sprite-p4 { background-position:100% 50%; }
 .product-photo.sprite-p5 { background-position:0 100%; }
 .product-photo.sprite-p6 { background-position:100% 100%; }
-.product-photo[class*="catalog-p"] { background-image:url('assets/catalog-products-v1.png'); background-size:400% 400%; }
+.product-photo[class*="catalog-p"] { background-image:url('assets/catalog-products-v1.jpg'); background-size:400% 400%; }
 .product-photo.catalog-p1 { background-position:0 0; }
 .product-photo.catalog-p2 { background-position:33.333% 0; }
 .product-photo.catalog-p3 { background-position:66.667% 0; }
