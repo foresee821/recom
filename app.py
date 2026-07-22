@@ -1265,52 +1265,19 @@ def intent_api_enabled() -> bool:
 
 
 def intent_system_prompt() -> str:
-    category_values = list(dict.fromkeys(item[0] for item in COMMODITY_INTENTS))
-    attribute_values = list(dict.fromkeys(item[0] for item in ATTRIBUTE_INTENTS))
-    audience_values = list(dict.fromkeys(item[0] for item in AUDIENCE_INTENTS))
-    style_values = list(dict.fromkeys(item[0] for item in STYLE_INTENTS))
-    brand_values = list(dict.fromkeys(item[0] for item in BRAND_INTENTS))
-    scenarios = [
-        {
-            "key": item["key"],
-            "label": item["label"],
-            "targets": list(item["targets"]),
-        }
-        for item in SCENARIO_INTENTS
-    ]
-    explore_themes = [item["key"] for item in EXPLORE_INTENTS]
-    return f"""你是电商推荐系统的意图结构化引擎。把用户本轮原话转换为 JSON tag，禁止推荐商品，禁止输出解释或 Markdown。
+    scenario_tags = list(dict.fromkeys(item[0] for item in COMMODITY_INTENTS))
+    return """你是电商推荐系统的意图结构化引擎。理解用户真正的购物目标，把本轮原话转换为 JSON tag；不按固定短语匹配，禁止推荐商品、解释或 Markdown。
 
-只输出一个 JSON 对象，结构如下：
-{{
-  "mode": "product|scenario|explore|unknown",
-  "type": "pull|exclude|correct|explore|unknown",
-  "polarity": "positive|negative|neutral",
-  "confidence": 0.0,
-  "evidence": ["原话中的短语"],
-  "slots": [
-    {{"name":"category|xcat1|xcat2|attribute|audience|style|brand|price|priceOrder", "operator":"eq|neq|lte|gte", "value":"字符串或数字", "strength":"hard|soft", "label":"给用户看的简短中文", "sourceMode":"可选 scenario|explore", "sourceKey":"可选主题标识"}}
-  ],
-  "scenario": {{"key":"英文短标识", "label":"中文场景", "targets":["需要的商品类目"]}},
-  "exploreTheme": "主题标识"
-}}
+只输出一个 JSON 对象：
+{"mode":"product|scenario|explore|unknown","type":"pull|exclude|correct|explore|unknown","polarity":"positive|negative|neutral","confidence":0.0,"evidence":["原话短语"],"slots":[{"name":"category|attribute|audience|style|brand|price|priceOrder","operator":"eq|neq|lte|gte","value":"字符串或数字","strength":"hard|soft","label":"简短中文"}],"scenario":{"key":"英文短标识","label":"中文场景","targets":["具体商品"]},"exploreTheme":"主题标识"}
 
-规则：
-1. 根据用户真正要完成的购物目标判断 mode，不按固定短语匹配：用户指向可直接购买的具体商品或约束时属于 product；用户表达了一个需要多类商品共同满足的目标、活动或生活情境时属于 scenario；用户没有具体商品或生活目标、只是开放地发现新奇事物或灵感时才属于 explore；与购物无关属于 unknown。
-1.1 scenario 要理解目标背后的实际需求，自主拆成 3 到 6 个高相关、可直接购买或匹配的具体 target，优先使用下面提供的标准值。不要把用户的抽象目标简单加上“用品”二字作为 category，也不要为了凑数生成弱相关标签。
-2. “不要/少点/排除”使用 neq；“以内/以下/不超过”对 price 使用 lte；“必须/只看/一定要/预算上限”使用 hard，其余通常 soft。
-3. scenario 的每个 target 还必须生成 category/eq slot，并带 sourceMode="scenario"、sourceKey=场景 key。explore 生成 attribute/eq/新鲜感 slot，带 sourceMode="explore"、sourceKey=exploreTheme；不得臆造用户没有表达或无法从目标合理推导的约束。
-4. 多个正负条件全部保留；只提取用户确实表达的约束，不臆造性别、价格、品牌。
-5. 优先使用下列标准值；没有合适标准值时保留用户原词。
-category 标准值：{json.dumps(category_values, ensure_ascii=False)}
-attribute 标准值：{json.dumps(attribute_values, ensure_ascii=False)}
-audience 标准值：{json.dumps(audience_values, ensure_ascii=False)}
-style 标准值：{json.dumps(style_values, ensure_ascii=False)}
-brand 标准值：{json.dumps(brand_values, ensure_ascii=False)}
-xcat1 标准值：{json.dumps(TAXONOMY_PARENT_NAMES, ensure_ascii=False)}
-已知场景：{json.dumps(scenarios, ensure_ascii=False)}
-探索主题：{json.dumps(explore_themes, ensure_ascii=False)}
-6. 只有确信名称与标准品类完全一致时才输出 xcat1/xcat2；xcat2 同时输出其父级 xcat1。"""
+判断与提取规则：
+1. 用户指向具体商品或商品约束时用 product；生活事件、活动或需要多类商品共同满足的目标用 scenario，例如留学、搬家、露营、旅行、参加演唱会，即使用户只说“想看相关东西”也属于需要多类商品共同满足的场景；没有具体商品或生活目标、只是开放地发现新奇事物或灵感时才用 explore；与购物无关用 unknown。
+2. scenario 自主选择 3 到 6 个高相关、能在淘宝直接下单的实体商品 tag，并为每个 target 生成一一对应的 category/eq slot；scenario 的 targets 和 category slots 必须且只能从下方“可用商品 tags”中选择。所有 value、label、targets 必须使用简体中文商品名。禁止把抽象目标简单加“用品”二字，禁止输出申请、签证、课程、住宿、机会、信息、服务、流程、证件或非商品材料，也不要为凑数生成弱相关内容。
+3. “不要/少点/排除”用 neq；“以内/以下/不超过”对 price 用 lte；“必须/只看/一定要/预算上限”用 hard，其余通常用 soft。
+4. 用户明确说出的每个商品名都必须保留为 category/eq slot，不能只输出价格或属性。多个正负条件全部保留；只提取用户明确表达或可从生活目标合理推导的条件，不臆造性别、价格、品牌。product 模式没有固定枚举限制，可使用自然、具体的中文商品 tag。
+
+可用商品 tags：""" + json.dumps(scenario_tags, ensure_ascii=False)
 
 
 def extract_json_object(value: Any) -> dict[str, Any]:
@@ -1433,21 +1400,53 @@ def normalize_api_slots(raw_slots: Any) -> list[dict[str, Any]]:
     return normalized
 
 
+def recover_explicit_product_category(transcript: str) -> dict[str, Any] | None:
+    """Recover an explicit catalog noun only when the API omitted its category slot."""
+    matches: list[tuple[int, str, str]] = []
+    for value, display, aliases in COMMODITY_INTENTS:
+        for alias in aliases:
+            if alias in transcript:
+                matches.append((len(alias), value, display))
+    if not matches:
+        return None
+    _, value, display = max(matches)
+    return slot("category", "eq", value, "hard", display)
+
+
 def normalize_api_intent(raw: dict[str, Any], transcript: str) -> dict[str, Any]:
     mode = str(raw.get("mode", "unknown")).strip().lower()
     if mode not in ("product", "scenario", "explore", "unknown"):
         raise IntentAPIError("模型返回了不支持的 mode")
     slots = normalize_api_slots(raw.get("slots", []))
+    if mode == "product" and not any(
+        item["name"] in ("category", "xcat1", "xcat2") and item["operator"] == "eq"
+        for item in slots
+    ):
+        recovered_category = recover_explicit_product_category(transcript)
+        if recovered_category:
+            slots.insert(0, recovered_category)
     scenario_payload = raw.get("scenario") if isinstance(raw.get("scenario"), dict) else {}
     explore_theme = str(raw.get("exploreTheme", "fresh")).strip()[:40] or "fresh"
 
     if mode == "scenario":
         scenario_key = str(scenario_payload.get("key", "custom")).strip()[:40] or "custom"
         scenario_label = str(scenario_payload.get("label", "场景需求")).strip()[:40] or "场景需求"
+        allowed_targets = {item[0] for item in COMMODITY_INTENTS}
+        slots = [
+            item for item in slots
+            if not (
+                item["name"] == "category"
+                and item["operator"] == "eq"
+                and item["value"] not in allowed_targets
+            )
+        ]
         raw_targets = scenario_payload.get("targets", [])
         if not isinstance(raw_targets, list):
             raw_targets = []
-        targets = [str(value).strip() for value in raw_targets if isinstance(value, str) and value.strip()][:12]
+        targets = [
+            str(value).strip() for value in raw_targets
+            if isinstance(value, str) and str(value).strip() in allowed_targets
+        ][:6]
         targets = list(dict.fromkeys(targets))
         existing_targets = {
             item["value"] for item in slots
@@ -1469,7 +1468,11 @@ def normalize_api_intent(raw: dict[str, Any], transcript: str) -> dict[str, Any]
                 str(item["value"]) for item in slots
                 if item.get("sourceMode") == "scenario" and item["operator"] == "eq"
             ]
-        scenario_payload = {"key": scenario_key, "label": scenario_label, "targets": targets}
+        if targets:
+            scenario_payload = {"key": scenario_key, "label": scenario_label, "targets": targets}
+        else:
+            mode = "unknown"
+            slots = []
     elif mode == "explore":
         if not slots:
             slots = [{
@@ -1562,6 +1565,9 @@ def call_whale_chat(
             "缺少 whale-sdk，请先执行 .venv/bin/pip install -r requirements.txt"
         ) from exc
 
+    if base_url:
+        disable_unused_whale_discovery()
+
     signature = (api_key, base_url or "")
     global _WHALE_CONFIG_SIGNATURE
     if _WHALE_CONFIG_SIGNATURE != signature:
@@ -1578,8 +1584,50 @@ def call_whale_chat(
         messages=messages,
         stream=False,
         temperature=0,
+        max_tokens=512,
         timeout=timeout,
     )
+
+
+def disable_unused_whale_discovery() -> None:
+    """Stop SDK discovery refreshes when a direct Whale base URL is configured."""
+    try:
+        from vipserver.vip_client import global_vip_client
+
+        reactor = global_vip_client.host_reactor
+        reactor.update_domain_thread.stop_flag = True
+        reactor.proxy.update_srv_thread.stop_flag = True
+    except Exception:
+        # Discovery is an SDK implementation detail and must never break inference.
+        pass
+
+
+def warm_whale_sdk() -> None:
+    """Load and configure Whale in the background so the first user call stays fast."""
+    if not intent_api_enabled():
+        return
+    api_key = first_env("INTENT_API_KEY", "WHALE_API_KEY")
+    model = first_env("INTENT_API_MODEL", "WHALE_API_MODEL")
+    base_url = first_env("INTENT_API_URL", "WHALE_API_URL")
+    if not api_key or not model:
+        return
+    try:
+        from whale import TextGeneration
+
+        if base_url:
+            disable_unused_whale_discovery()
+        global _WHALE_CONFIG_SIGNATURE
+        signature = (api_key, base_url or "")
+        with _WHALE_CONFIG_LOCK:
+            if _WHALE_CONFIG_SIGNATURE != signature:
+                if base_url:
+                    TextGeneration.set_api_key(api_key, base_url=base_url)
+                else:
+                    TextGeneration.set_api_key(api_key)
+                _WHALE_CONFIG_SIGNATURE = signature
+    except Exception:
+        # The real request still reports a useful error if warmup could not finish.
+        return
 
 
 def extract_whale_intent_payload(response: Any) -> dict[str, Any]:
@@ -2184,6 +2232,7 @@ def run() -> None:
     server = ThreadingHTTPServer(("0.0.0.0", PORT), DemoHandler)
     print(f"你说了算 Demo 已启动：http://127.0.0.1:{PORT}")
     print("手机体验：请使用电脑的局域网 IP 访问同一端口")
+    threading.Thread(target=warm_whale_sdk, name="whale-sdk-warmup", daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

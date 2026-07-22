@@ -180,6 +180,55 @@ class IntentAPITests(unittest.TestCase):
         self.assertIn("需要多类商品共同满足", prompt)
         self.assertIn("开放地发现新奇事物或灵感", prompt)
 
+    def test_api_scenario_keeps_only_supported_product_tags(self):
+        intent = app.normalize_api_intent({
+            "mode": "scenario",
+            "type": "pull",
+            "slots": [
+                {"name": "category", "operator": "eq", "value": "行李箱", "strength": "soft"},
+                {"name": "category", "operator": "eq", "value": "签证办理", "strength": "soft"},
+            ],
+            "scenario": {
+                "key": "study_abroad",
+                "label": "留学",
+                "targets": ["行李箱", "签证办理"],
+            },
+        }, "我想看留学的东西")
+
+        self.assertEqual(intent["mode"], "scenario")
+        self.assertEqual(intent["scenario"]["targets"], ["行李箱"])
+        self.assertEqual(
+            {(item["name"], item["value"]) for item in intent["slots"]},
+            {("category", "行李箱")},
+        )
+
+    def test_api_scenario_without_supported_products_requests_clarification(self):
+        intent = app.normalize_api_intent({
+            "mode": "scenario",
+            "slots": [],
+            "scenario": {
+                "key": "study_abroad",
+                "label": "留学",
+                "targets": ["签证办理", "留学课程"],
+            },
+        }, "我想看留学的东西")
+
+        self.assertEqual(intent["mode"], "unknown")
+        self.assertEqual(intent["slots"], [])
+
+    def test_api_product_recovers_explicit_catalog_noun_if_model_omits_it(self):
+        intent = app.normalize_api_intent({
+            "mode": "product",
+            "type": "pull",
+            "slots": [
+                {"name": "price", "operator": "lte", "value": 500, "strength": "hard"},
+            ],
+        }, "想看蓝牙耳机，500元以内")
+
+        values = {(item["name"], item["operator"], item["value"]) for item in intent["slots"]}
+        self.assertIn(("category", "eq", "耳机"), values)
+        self.assertIn(("price", "lte", 500), values)
+
     def test_whale_error_reports_authorization_failure_without_leaking_api_key(self):
         response = SimpleNamespace(
             error_code=403,
@@ -231,6 +280,7 @@ class IntentAPITests(unittest.TestCase):
         self.assertEqual(FakeTextGeneration.request["messages"], messages)
         self.assertFalse(FakeTextGeneration.request["stream"])
         self.assertEqual(FakeTextGeneration.request["temperature"], 0)
+        self.assertEqual(FakeTextGeneration.request["max_tokens"], 512)
 
     def test_configured_api_replaces_rule_parser_and_keeps_intent_contract(self):
         model_intent = {
