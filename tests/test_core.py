@@ -117,8 +117,8 @@ class RealCatalogTests(unittest.TestCase):
         self.assertTrue(all(item["id"].startswith("intent-trending-hobbies-") for item in payload["products"]))
         source = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn("hobbyCatalogProductIds(transcript", source)
-        self.assertIn('condition.sourceKey === "freshness"', source)
         self.assertIn("新流行.{0,8}(兴趣|爱好)", source)
+        self.assertNotIn("hasFreshnessContext", source)
 
 
 if __name__ == "__main__":

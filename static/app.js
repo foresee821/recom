@@ -399,9 +399,8 @@ function applyFreshnessCatalogFallback(result, productIds) {
 
 async function hobbyCatalogProductIds(transcript, conditions) {
   const normalized = String(transcript || "").replace(/\s/g, "");
-  const hasFreshnessContext = conditions.some((condition) => condition.sourceKey === "freshness");
   const isHobbyQuery = /(新流行.{0,8}(兴趣|爱好)|(兴趣|爱好).{0,8}(值得尝试|流行|新)|尝试.{0,6}(兴趣|爱好)|有什么新爱好)/.test(normalized);
-  if (!hasFreshnessContext || !isHobbyQuery) return [];
+  if (!isHobbyQuery) return [];
   if (!state.intentCatalogCache.has("trending-hobbies")) {
     const response = await fetch("data/intent-products/trending-hobbies.json", { cache: "no-store" });
     if (!response.ok) throw new Error("兴趣爱好商品加载失败");
