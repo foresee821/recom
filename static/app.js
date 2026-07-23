@@ -138,10 +138,13 @@ const caseSpriteSources = {
 const hiddenHomepageProductIds = new Set([
   "item-158364675",
 ]);
-const firstRoundHomepageReplacement = {
-  removeId: "item-543626745567",
-  replacementId: "item-571346532690",
-  insertIndex: 2,
+const firstRoundHomepageLayout = {
+  removeIds: ["item-543626745567"],
+  pinnedItems: [
+    { id: "item-571346532690", insertIndex: 2 },
+    { id: "item-594188372494", insertIndex: 4 },
+    { id: "item-1016585476064", insertIndex: 5 },
+  ],
 };
 
 function caseSpriteFor(productId) {
@@ -299,18 +302,16 @@ function homepageProductsForRound(products, round) {
     for (const items of groups) if (items[index]) interleaved.push(items[index]);
   }
   if (round === 0) {
-    const replacement = products.find((item) => item.id === firstRoundHomepageReplacement.replacementId);
-    if (replacement) {
-      const withoutReplacedItems = interleaved.filter((item) =>
-        ![firstRoundHomepageReplacement.removeId, replacement.id].includes(item.id),
-      );
-      const insertIndex = Math.min(firstRoundHomepageReplacement.insertIndex, withoutReplacedItems.length);
-      return [
-        ...withoutReplacedItems.slice(0, insertIndex),
-        replacement,
-        ...withoutReplacedItems.slice(insertIndex),
-      ];
+    const pinnedIds = new Set(firstRoundHomepageLayout.pinnedItems.map((item) => item.id));
+    const arranged = interleaved.filter((item) =>
+      !firstRoundHomepageLayout.removeIds.includes(item.id) && !pinnedIds.has(item.id),
+    );
+    for (const pin of firstRoundHomepageLayout.pinnedItems) {
+      const product = products.find((item) => item.id === pin.id);
+      if (!product) continue;
+      arranged.splice(Math.min(pin.insertIndex, arranged.length), 0, product);
     }
+    return arranged;
   }
   return interleaved;
 }

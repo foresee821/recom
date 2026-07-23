@@ -518,9 +518,10 @@ class RealCatalogTests(unittest.TestCase):
         self.assertFalse(intent_ids.intersection(item["id"] for item in home["products"]))
         self.assertFalse(any("测试商品请不要拍" in item["title"] for item in home["products"]))
         source = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
-        self.assertIn('removeId: "item-543626745567"', source)
-        self.assertIn('replacementId: "item-571346532690"', source)
-        self.assertIn("insertIndex: 2", source)
+        self.assertIn('removeIds: ["item-543626745567"]', source)
+        self.assertIn('{ id: "item-571346532690", insertIndex: 2 }', source)
+        self.assertIn('{ id: "item-594188372494", insertIndex: 4 }', source)
+        self.assertIn('{ id: "item-1016585476064", insertIndex: 5 }', source)
         self.assertIn("if (round === 0)", source)
 
     def test_frontend_loads_catalog_by_category_shard(self):
