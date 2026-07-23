@@ -372,12 +372,16 @@ class RealCatalogTests(unittest.TestCase):
         self.assertEqual(shard_total, index["productCount"])
 
     def test_camping_catalog_is_derived_from_the_new_catalog(self):
-        payload = json.loads(
+        featured = json.loads(
             (ROOT / "static" / "data" / "intent-products" / "camping.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(payload["triggers"], ["露营", "野营", "野炊"])
-        self.assertGreaterEqual(len(payload["products"]), 20)
-        self.assertTrue(all(item["id"].startswith("catalog-") for item in payload["products"]))
+        expanded = json.loads(
+            (ROOT / "static" / "data" / "intent-products" / "camping-new.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(len(featured["products"]), 19)
+        self.assertGreaterEqual(len(expanded["products"]), 20)
+        self.assertTrue(all(item["id"].startswith("intent-camping-") for item in featured["products"]))
+        self.assertTrue(all(item["id"].startswith("catalog-") for item in expanded["products"]))
 
     def test_homepage_catalog_remains_independent(self):
         home = json.loads((ROOT / "static" / "data" / "home-products.json").read_text(encoding="utf-8"))
@@ -395,6 +399,29 @@ class RealCatalogTests(unittest.TestCase):
         self.assertIn("categoryMatchScore(transcript", source)
         self.assertIn("interleaveCategoryProducts(groups)", source)
         self.assertIn('"吊坠": ["项坠/吊坠", "项链"]', source)
+
+    def test_freshness_scene_uses_its_dedicated_catalog(self):
+        payload = json.loads(
+            (ROOT / "static" / "data" / "intent-products" / "freshness.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(payload["scene"], "freshness")
+        self.assertEqual(len(payload["products"]), 12)
+        self.assertTrue(all(item["id"].startswith("intent-freshness-") for item in payload["products"]))
+        source = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("freshnessCatalogProductIds(transcript", source)
+        self.assertIn("看腻了|有点腻|换点新鲜", source)
+
+    def test_trending_hobbies_follow_up_uses_sheet2_catalog(self):
+        payload = json.loads(
+            (ROOT / "static" / "data" / "intent-products" / "trending-hobbies.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(payload["scene"], "trending-hobbies")
+        self.assertEqual(len(payload["products"]), 12)
+        self.assertTrue(all(item["id"].startswith("intent-trending-hobbies-") for item in payload["products"]))
+        source = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("hobbyCatalogProductIds(transcript", source)
+        self.assertIn("新流行.{0,8}(兴趣|爱好)", source)
+        self.assertNotIn("hasFreshnessContext", source)
 
 
 if __name__ == "__main__":

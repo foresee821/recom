@@ -358,14 +358,89 @@ async function intentCatalogProductIds(transcript, conditions) {
     conditions.some((condition) => condition.sourceKey === "camping");
   if (!isCamping) return [];
   if (!state.intentCatalogCache.has("camping")) {
-    const response = await fetch("data/intent-products/camping.json", { cache: "no-store" });
-    if (!response.ok) throw new Error("露营商品加载失败");
-    const payload = await response.json();
-    state.intentCatalogCache.set("camping", payload.products || []);
+    const responses = await Promise.all([
+      fetch("data/intent-products/camping.json", { cache: "no-store" }),
+      fetch("data/intent-products/camping-new.json", { cache: "no-store" }),
+    ]);
+    if (responses.some((response) => !response.ok)) throw new Error("露营商品加载失败");
+    const [featured, expanded] = await Promise.all(responses.map((response) => response.json()));
+    const seen = new Set();
+    const products = [...(featured.products || []), ...(expanded.products || [])]
+      .filter((item) => {
+        const key = item.image || item.title || item.id;
+        if (seen.has(key) || String(item.title || "").includes("测试商品请不要拍")) return false;
+        seen.add(key);
+        return true;
+      });
+    state.intentCatalogCache.set("camping", products);
   }
   const products = state.intentCatalogCache.get("camping");
   for (const item of products) state.products.set(item.id, item);
   return products.map((item) => item.id);
+}
+
+async function freshnessCatalogProductIds(transcript, conditions) {
+  const normalized = String(transcript || "").replace(/\s/g, "");
+  const isFreshness = /(看腻了|有点腻|换点新鲜|看看新的|换一批|来点新鲜)/.test(normalized) ||
+    conditions.some((condition) => condition.sourceKey === "freshness");
+  if (!isFreshness) return [];
+  if (!state.intentCatalogCache.has("freshness")) {
+    const response = await fetch("data/intent-products/freshness.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("新鲜感商品加载失败");
+    const payload = await response.json();
+    state.intentCatalogCache.set("freshness", (payload.products || [])
+      .filter((item) => !String(item.title || "").includes("测试商品请不要拍")));
+  }
+  const products = state.intentCatalogCache.get("freshness");
+  for (const item of products) state.products.set(item.id, item);
+  return products.map((item) => item.id);
+}
+
+function applyFreshnessCatalogFallback(result, productIds) {
+  if (!productIds.length) return;
+  const condition = {
+    name: "goal", operator: "eq", value: "新鲜感", strength: "soft",
+    label: "换点新鲜的", sourceMode: "explore", sourceKey: "freshness",
+  };
+  result.sessionIntent = [
+    ...(result.sessionIntent || []).filter((item) => item.sourceKey !== "freshness"),
+    condition,
+  ];
+  if (result.intent.type !== "unknown") return;
+  result.intent = { type: "explore", mode: "explore", modeLabel: "探索意图", slots: [condition] };
+  result.feedback = "已为你换一批新鲜好物";
+}
+
+async function hobbyCatalogProductIds(transcript, conditions) {
+  const normalized = String(transcript || "").replace(/\s/g, "");
+  const isHobbyQuery = /(新流行.{0,8}(兴趣|爱好)|(兴趣|爱好).{0,8}(值得尝试|流行|新)|尝试.{0,6}(兴趣|爱好)|有什么新爱好)/.test(normalized);
+  if (!isHobbyQuery) return [];
+  if (!state.intentCatalogCache.has("trending-hobbies")) {
+    const response = await fetch("data/intent-products/trending-hobbies.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("兴趣爱好商品加载失败");
+    const payload = await response.json();
+    state.intentCatalogCache.set("trending-hobbies", (payload.products || [])
+      .filter((item) => !String(item.title || "").includes("测试商品请不要拍")));
+  }
+  const products = state.intentCatalogCache.get("trending-hobbies");
+  for (const item of products) state.products.set(item.id, item);
+  return products.map((item) => item.id);
+}
+
+function applyHobbyCatalogFallback(result, productIds) {
+  if (!productIds.length) return;
+  const condition = {
+    name: "goal", operator: "eq", value: "新流行兴趣", strength: "soft",
+    label: "尝试新流行的兴趣爱好", sourceMode: "explore", sourceKey: "trending-hobbies",
+  };
+  result.sessionIntent = [
+    ...(result.sessionIntent || []).filter((item) => item.sourceKey !== "trending-hobbies"),
+    condition,
+  ];
+  if (result.intent.type === "unknown") {
+    result.intent = { type: "explore", mode: "explore", modeLabel: "探索意图", slots: [condition] };
+  }
+  result.feedback = "已为你找到值得尝试的新流行兴趣";
 }
 
 async function loadCategoryCatalogIndex() {
@@ -988,6 +1063,14 @@ async function applyTranscript(transcript) {
       ? { ids: [], matches: [] }
       : await categoryCatalogProducts(transcript, result.sessionIntent || []);
     if (!isPresetScenario) applyCategoryCatalogFallback(result, categoryCatalog);
+    const freshnessCatalogIds = isPresetScenario
+      ? []
+      : await freshnessCatalogProductIds(transcript, result.sessionIntent || []);
+    if (!isPresetScenario) applyFreshnessCatalogFallback(result, freshnessCatalogIds);
+    const hobbyCatalogIds = isPresetScenario
+      ? []
+      : await hobbyCatalogProductIds(transcript, result.sessionIntent || []);
+    if (!isPresetScenario) applyHobbyCatalogFallback(result, hobbyCatalogIds);
     const intentCatalogIds = isPresetScenario
       ? []
       : await intentCatalogProductIds(transcript, result.sessionIntent || []);
@@ -1001,13 +1084,17 @@ async function applyTranscript(transcript) {
     state.sessionIntent = result.sessionIntent;
     state.activePresetKey = isPresetScenario ? result.intent.presetKey : null;
     if (state.scene === "recommend") {
-      state.activeIntentProductIds = intentCatalogIds;
+      state.activeIntentProductIds = hobbyCatalogIds.length
+        ? hobbyCatalogIds
+        : freshnessCatalogIds.length ? freshnessCatalogIds : intentCatalogIds;
       if (isPresetScenario) {
         state.recommendationIds = [...result.resultIds];
         els.subtitle.textContent = "已切换为预制情景商品";
       } else {
         const catalogIds = rankHomeCatalogForIntent(result.sessionIntent);
         state.recommendationIds = usableResultIds(
+          hobbyCatalogIds,
+          freshnessCatalogIds,
           intentCatalogIds,
           categoryCatalog.ids,
           catalogIds,
