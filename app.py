@@ -529,14 +529,52 @@ def normalize_preset_prompt(value: str) -> str:
     return re.sub(r"[\s，。！？、,.!?“”\"'：:；;·\-—_]+", "", value).lower()
 
 
-SCENARIO_PRESET_BY_PROMPT = {
-    normalize_preset_prompt(item["prompt"]): item
+SCENARIO_PRESET_BY_KEY = {
+    item["key"]: item
     for item in SCENARIO_PRESETS
 }
 
+# The demo scenarios are keyed by the user's core intent, not by a verbatim
+# sentence. More specific intents are listed first so "通勤穿搭" routes to the
+# commuting set instead of the broader outfit set.
+SCENARIO_PRESET_MATCHERS = (
+    {
+        "key": "scenario-1-q2",
+        "pattern": r"通勤",
+    },
+    {
+        "key": "scenario-1-q3",
+        "pattern": r"性价比|实惠|有些贵|太贵|便宜(?:点|些)|价格(?:低|友好)",
+    },
+    {
+        "key": "scenario-1-q1",
+        "pattern": r"穿搭|衣服搭配|服装搭配|看看衣服|想看衣服",
+    },
+    {
+        "key": "scenario-2-q2",
+        "pattern": r"兴趣爱好|新(?:的)?爱好|流行(?:的)?兴趣|值得尝试(?:的)?兴趣|尝试(?:点|些)?新爱好",
+    },
+    {
+        "key": "scenario-2-q1",
+        "pattern": r"看(?:得)?有点腻|看腻|换点新鲜|来点新鲜|新鲜(?:的|点)?|换一批|换点新的",
+    },
+    {
+        "key": "scenario-3-q1",
+        "pattern": r"搬(?:了)?新家|搬家|布置(?:一下|起来)?(?:我)?(?:的)?(?:新)?家|把家布置|新家(?:布置|装饰|收纳)",
+    },
+    {
+        "key": "scenario-4-q1",
+        "pattern": r"见喜欢的人|见心上人|见暗恋的人|去约会|要约会|约会(?:穿搭|准备|好物)?",
+    },
+)
+
 
 def preset_scenario_for(transcript: str) -> dict[str, Any] | None:
-    return SCENARIO_PRESET_BY_PROMPT.get(normalize_preset_prompt(transcript))
+    normalized = normalize_preset_prompt(transcript)
+    for matcher in SCENARIO_PRESET_MATCHERS:
+        if re.search(matcher["pattern"], normalized):
+            return SCENARIO_PRESET_BY_KEY[matcher["key"]]
+    return None
 
 
 def slot(name: str, operator: str, value: Any, strength: str, label: str) -> dict[str, Any]:

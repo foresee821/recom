@@ -37,6 +37,7 @@ STATIC_ENGINE = r"""
   const bootstrap = __BOOTSTRAP__;
   const precomputed = __INTENTS__;
   const presetResponses = __PRESET_RESPONSES__;
+  const presetMatchers = __PRESET_MATCHERS__;
   const products = new Map(bootstrap.products.map((item) => [item.id, item]));
   const groupPrefixes = {
     rental: "rental-",
@@ -72,9 +73,16 @@ STATIC_ENGINE = r"""
   const normalizedIntents = new Map(
     Object.entries(precomputed).map(([phrase, intent]) => [normalize(phrase), intent])
   );
-  const normalizedPresetResponses = new Map(
-    Object.entries(presetResponses).map(([phrase, response]) => [normalize(phrase), response])
-  );
+  const presetResponseByKey = new Map(Object.entries(presetResponses));
+  const compiledPresetMatchers = presetMatchers.map(({ key, pattern }) => (
+    { key, pattern: new RegExp(pattern) }
+  ));
+
+  function matchPresetResponse(transcript) {
+    const text = normalize(transcript);
+    const matcher = compiledPresetMatchers.find((item) => item.pattern.test(text));
+    return matcher ? presetResponseByKey.get(matcher.key) : null;
+  }
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -244,7 +252,7 @@ STATIC_ENGINE = r"""
     }
     if (path === "/api/intent/apply") {
       const payload = JSON.parse(options.body || "{}");
-      const presetResponse = normalizedPresetResponses.get(normalize(payload.transcript));
+      const presetResponse = matchPresetResponse(payload.transcript);
       if (presetResponse) return clone(presetResponse);
       const intent = inferIntent(payload.transcript);
       const sessionIntent = mergeConditions(payload.sessionIntent || [], intent);
@@ -314,7 +322,7 @@ def build() -> None:
     os.environ["INTENT_ENGINE"] = "rules"
     intents = {phrase: app.parse_intent(phrase) for phrase in sorted(PRECOMPUTED_PHRASES)}
     preset_responses = {
-        preset["prompt"]: app.preset_scenario_response(preset["prompt"])
+        preset["key"]: app.preset_scenario_response(preset["prompt"])
         for preset in app.SCENARIO_PRESETS
     }
     engine = STATIC_ENGINE.replace(
@@ -326,6 +334,9 @@ def build() -> None:
     ).replace(
         "__PRESET_RESPONSES__",
         json.dumps(preset_responses, ensure_ascii=False, separators=(",", ":")),
+    ).replace(
+        "__PRESET_MATCHERS__",
+        json.dumps(app.SCENARIO_PRESET_MATCHERS, ensure_ascii=False, separators=(",", ":")),
     )
     (CLIENT / "demo-static.js").write_text(engine, encoding="utf-8")
 

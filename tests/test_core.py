@@ -328,6 +328,24 @@ class RealCatalogTests(unittest.TestCase):
             ])
             self.assertEqual(response["products"], preset["products"])
 
+    def test_preset_scenarios_match_core_intent_instead_of_full_sentence(self):
+        examples = {
+            "scenario-1-q1": "今天只想看看穿搭灵感",
+            "scenario-1-q2": "给我推荐适合通勤的穿搭",
+            "scenario-1-q3": "预算紧一点，想要性价比高的",
+            "scenario-2-q1": "最近看腻了，来点新鲜的",
+            "scenario-2-q2": "有没有什么新爱好值得尝试",
+            "scenario-3-q1": "准备慢慢布置一下新家",
+            "scenario-4-q1": "周末要去约会，帮我准备一下",
+        }
+        for expected_key, transcript in examples.items():
+            with self.subTest(transcript=transcript):
+                response = app.preset_scenario_response(transcript)
+                self.assertIsNotNone(response)
+                self.assertEqual(response["intent"]["presetKey"], expected_key)
+
+        self.assertIsNone(app.preset_scenario_response("我想看看护肤品"))
+
     def test_preset_route_precedes_model_intent_parsing(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         handler = source[source.index("    def do_POST(self) -> None:"):]
@@ -343,7 +361,8 @@ class RealCatalogTests(unittest.TestCase):
     def test_static_pages_build_embeds_preset_responses(self):
         source = (ROOT / "scripts" / "build_sites.py").read_text(encoding="utf-8")
         self.assertIn("const presetResponses = __PRESET_RESPONSES__;", source)
-        self.assertIn("normalizedPresetResponses.get(normalize(payload.transcript))", source)
+        self.assertIn("const presetMatchers = __PRESET_MATCHERS__;", source)
+        self.assertIn("matchPresetResponse(payload.transcript)", source)
         self.assertIn('os.environ["INTENT_ENGINE"] = "rules"', source)
 
     def test_secondary_category_returns_real_ranked_products(self):
