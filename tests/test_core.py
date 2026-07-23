@@ -35,6 +35,11 @@ class IntentParserTests(unittest.TestCase):
         self.assertIn(("xcat2", "eq", "连衣裙"), slots)
         self.assertIn(("price", "lte", 500), slots)
 
+    def test_natural_remove_wording_is_detected_before_api_category_mapping(self):
+        intent = app.parse_intent_with_rules("别再推荐护肤品了，我要看看男士西装")
+        slots = {(item["name"], item["operator"], item["value"]) for item in intent["slots"]}
+        self.assertIn(("category", "neq", "护肤"), slots)
+
 
 class CategorySelectorTests(unittest.TestCase):
     def test_candidates_contain_only_real_catalog_categories(self):
@@ -134,7 +139,7 @@ class CategorySelectorTests(unittest.TestCase):
                 "INTENT_API_KEY": "test-key",
                 "INTENT_API_MODEL": "test-model",
             }):
-                intent = app.parse_intent_with_api("现在不要看护肤了，看看穿搭")
+                intent = app.parse_intent_with_api("别再推荐护肤品了，我要看看男士西装")
 
         slots = {(item["name"], item["operator"], item["value"]) for item in intent["slots"]}
         self.assertEqual(intent["polarity"], "mixed")

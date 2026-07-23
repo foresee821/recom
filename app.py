@@ -1022,7 +1022,10 @@ DIRECT_PRODUCT_TERMS = tuple(
     if term not in {"露营", "户外", "办公", "穿搭", "家里", "收拾家", "宝宝"}
 )
 
-NEGATIVE_WORDS = ("不要", "不想", "别推", "别给我推", "少点", "少看", "减少", "排除", "看腻", "烦")
+NEGATIVE_WORDS = (
+    "不要", "不想", "不再", "先别", "别再", "别推", "别推荐",
+    "别再推荐", "别给我推", "少点", "少看", "减少", "排除", "看腻", "烦",
+)
 GENERIC_TAXONOMY_ALIASES = {
     "其他", "其它", "配件", "耗材", "配件耗材", "其他类", "其它类",
     "周边", "服务", "用品", "套装", "护理", "治疗",
@@ -2029,7 +2032,6 @@ def apply_category_delta_polarity(
 ) -> None:
     """Apply explicit add/remove wording without making another model call."""
     negative = [item for item in delta_slots if item["operator"] == "neq"]
-    positive = [item for item in delta_slots if item["operator"] == "eq"]
     if not negative:
         return
 
@@ -2048,7 +2050,7 @@ def apply_category_delta_polarity(
             candidate["level"] == "xcat2"
             and candidate["parent"] in negative_parents
         )
-        if belongs_to_negative or not positive:
+        if belongs_to_negative:
             raw["include_ids"].remove(candidate_id)
             if candidate_id not in raw["exclude_ids"]:
                 raw["exclude_ids"].append(candidate_id)
