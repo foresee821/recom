@@ -48,42 +48,37 @@ class CategorySelectorTests(unittest.TestCase):
             for item in candidates
         ))
 
-    def test_prompt_only_allows_one_existing_candidate_id(self):
-        candidates = app.category_selection_candidates("我想看留学的东西")
-        prompt = app.intent_system_prompt(candidates)
-
-        self.assertIn("最直接有帮助的 1 个", prompt)
-        self.assertIn("只能返回一个候选编号", prompt)
-        self.assertIn('{"category_id":"编号"}', prompt)
-        self.assertNotIn('"mode":"product|scenario|explore|unknown"', prompt)
-
-    def test_low_category_scores_trigger_hidden_fallback_instead_of_visible_selection(self):
-        candidates = app.category_selection_candidates("今天随便看看")
-        low_scores = {group_id: 1 for group_id, _, _ in app.CATEGORY_GROUPS}
-
-        with patch.object(app, "call_category_selector", return_value=low_scores) as selector:
-            selected = app.select_category_ids_with_api(
-                "今天随便看看",
-                candidates,
-                api_key="test-key",
-                model="test-model",
-                timeout=20,
-                base_url="",
-            )
-
-        self.assertEqual(selected, [])
-        self.assertEqual(selector.call_count, 1)
-
-    def test_ambiguous_high_category_scores_also_trigger_hidden_fallback(self):
-        candidates = app.category_selection_candidates("今天心情还行")
-        ambiguous_scores = {
-            group_id: 3 if index < 4 else 0
-            for index, (group_id, _, _) in enumerate(app.CATEGORY_GROUPS)
+    def test_selector_sends_exact_system_prompt_and_raw_user_input(self):
+        transcript = "有没有适合通勤背的包，简单一点"
+        response = {
+            "choices": [{
+                "message": {
+                    "content": '{"categories":["双肩背包","女士包袋新"]}',
+                },
+            }],
         }
+        with patch.object(app, "call_whale_chat", return_value=response) as chat:
+            raw = app.call_category_selector(
+                transcript,
+                api_key="test-key",
+                model="test-model",
+                timeout=20,
+                base_url="",
+            )
 
-        with patch.object(app, "call_category_selector", return_value=ambiguous_scores) as selector:
+        self.assertEqual(raw["categories"], ["双肩背包", "女士包袋新"])
+        self.assertEqual(chat.call_args.kwargs["messages"], [
+            {"role": "system", "content": app.CATEGORY_INTENT_SYSTEM_PROMPT},
+            {"role": "user", "content": transcript},
+        ])
+
+    def test_selector_only_accepts_allowlisted_real_category_names(self):
+        candidates = app.api_category_candidates()
+        with patch.object(app, "call_category_selector", return_value={
+            "categories": ["双肩背包", "除湿器", "不存在的类目", "双肩背包"],
+        }) as selector:
             selected = app.select_category_ids_with_api(
-                "今天心情还行",
+                "梅雨天鞋子老潮，想买点有用的",
                 candidates,
                 api_key="test-key",
                 model="test-model",
@@ -91,7 +86,10 @@ class CategorySelectorTests(unittest.TestCase):
                 base_url="",
             )
 
-        self.assertEqual(selected, [])
+        selected_names = {
+            item["name"] for item in candidates if item["id"] in selected
+        }
+        self.assertEqual(selected_names, {"双肩背包"})
         self.assertEqual(selector.call_count, 1)
 
     def test_model_output_is_resolved_by_id_and_generated_names_are_ignored(self):
@@ -129,15 +127,9 @@ class CategorySelectorTests(unittest.TestCase):
         )
 
     def test_api_maps_mixed_add_and_remove_to_real_categories(self):
-        def fake_select(query, candidates, **_kwargs):
-            target = (
-                "美容护肤/美体/精油"
-                if query == "护肤"
-                else "女装/女士精品"
-            )
-            return [next(item["id"] for item in candidates if item["name"] == target)]
-
-        with patch.object(app, "select_category_ids_with_api", side_effect=fake_select):
+        with patch.object(app, "call_category_selector", return_value={
+            "categories": ["连衣裙", "乳液/面霜"],
+        }):
             with patch.dict(os.environ, {
                 "INTENT_API_KEY": "test-key",
                 "INTENT_API_MODEL": "test-model",
@@ -147,10 +139,11 @@ class CategorySelectorTests(unittest.TestCase):
         slots = {(item["name"], item["operator"], item["value"]) for item in intent["slots"]}
         self.assertEqual(intent["polarity"], "mixed")
         self.assertIn(("xcat1", "neq", "美容护肤/美体/精油"), slots)
-        self.assertIn(("xcat1", "eq", "女装/女士精品"), slots)
+        self.assertIn(("xcat2", "neq", "乳液/面霜"), slots)
+        self.assertIn(("xcat2", "eq", "连衣裙"), slots)
         self.assertEqual(
             app.feedback_for(intent),
-            "已减少美容护肤/美体/精油，增加女装/女士精品、男装",
+            "已减少乳液/面霜、美容护肤/美体/精油，增加连衣裙",
         )
 
     def test_empty_model_selection_randomly_samples_real_categories_without_rejection_copy(self):
@@ -273,7 +266,7 @@ class CategorySelectorTests(unittest.TestCase):
 
         self.assertFalse(FakeTextGeneration.request["stream"])
         self.assertEqual(FakeTextGeneration.request["temperature"], 0)
-        self.assertEqual(FakeTextGeneration.request["max_tokens"], 160)
+        self.assertEqual(FakeTextGeneration.request["max_tokens"], 300)
 
 
 class RealCatalogTests(unittest.TestCase):

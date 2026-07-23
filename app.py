@@ -6,7 +6,6 @@ import os
 import random
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -18,6 +17,8 @@ STATIC_DIR = ROOT / "static"
 HOME_CATALOG_PATH = STATIC_DIR / "data" / "home-products.json"
 SCENARIO_CATALOG_PATH = STATIC_DIR / "data" / "scenario-products.json"
 EXAMPLE_CATALOG_PATH = STATIC_DIR / "data" / "example-products.json"
+CATEGORY_INTENT_SYSTEM_PROMPT_PATH = ROOT / "prompts" / "category_intent_system.txt"
+CATEGORY_INTENT_SYSTEM_PROMPT = CATEGORY_INTENT_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
 _WHALE_CONFIG_LOCK = threading.Lock()
 _WHALE_CONFIG_SIGNATURE: tuple[str, str] | None = None
 _HOME_CATALOG_GZIP: bytes | None = None
@@ -1497,16 +1498,51 @@ def category_selection_candidates(transcript: str) -> list[dict[str, str]]:
     return candidates
 
 
-def intent_system_prompt(candidates: list[dict[str, str]]) -> str:
-    candidate_lines = [
-        f"{item['id']}|{item['parent'] + ' > ' if item['parent'] else ''}{item['name']}"
-        for item in candidates
-    ]
-    return """从以下现有商品类目中选出对用户本次需求最直接有帮助的 1 个。
-不要选择只是任何人都可能购买、但与本次需求没有直接关系的类目。
-只能返回一个候选编号，不能创造类目。只输出 JSON：{"category_id":"编号"}
-候选类目：
-""" + "\n".join(candidate_lines)
+def intent_system_prompt(_candidates: list[dict[str, str]] | None = None) -> str:
+    """Return the exact, product-owned prompt used for Whale classification."""
+    return CATEGORY_INTENT_SYSTEM_PROMPT
+
+
+def prompt_allowed_categories() -> tuple[str, ...]:
+    """Read the allowlist from the prompt so validation cannot drift from it."""
+    marker = "# 允许品类列表\n"
+    examples_marker = "\n# 示例1"
+    if marker not in CATEGORY_INTENT_SYSTEM_PROMPT:
+        raise RuntimeError("品类识别 system prompt 缺少允许品类列表")
+    body = CATEGORY_INTENT_SYSTEM_PROMPT.split(marker, 1)[1]
+    body = body.split(examples_marker, 1)[0]
+    return tuple(line.strip() for line in body.splitlines() if line.strip())
+
+
+ALLOWED_INTENT_CATEGORIES = prompt_allowed_categories()
+ALLOWED_INTENT_CATEGORY_SET = frozenset(ALLOWED_INTENT_CATEGORIES)
+
+
+def api_category_candidates() -> list[dict[str, str]]:
+    """Build stable candidates from the prompt allowlist and the real taxonomy."""
+    parents_by_name: dict[str, set[str]] = {}
+    for item in TAXONOMY_CATEGORIES:
+        parents_by_name.setdefault(item["xcat2"], set()).add(item["xcat1"])
+
+    candidates: list[dict[str, str]] = []
+    for name in ALLOWED_INTENT_CATEGORIES:
+        parents = parents_by_name.get(name)
+        if not parents:
+            continue
+        candidates.append({
+            "id": f"c{len(candidates) + 1:03d}",
+            "level": "xcat2",
+            "name": name,
+            "parent": sorted(parents)[0],
+        })
+    for parent in sorted(TAXONOMY_PARENT_NAMES):
+        candidates.append({
+            "id": f"c{len(candidates) + 1:03d}",
+            "level": "xcat1",
+            "name": parent,
+            "parent": "",
+        })
+    return candidates
 
 
 CATEGORY_GROUPS = [
@@ -1830,7 +1866,7 @@ def call_whale_chat(
         messages=messages,
         stream=False,
         temperature=0,
-        max_tokens=160,
+        max_tokens=300,
         timeout=timeout,
     )
 
@@ -1910,7 +1946,7 @@ def extract_whale_intent_payload(response: Any) -> dict[str, Any]:
 
 
 def call_category_selector(
-    prompt: str,
+    transcript: str,
     *,
     api_key: str,
     model: str,
@@ -1920,7 +1956,10 @@ def call_category_selector(
     response = call_whale_chat(
         api_key=api_key,
         model=model,
-        messages=[{"role": "user", "content": prompt}],
+        messages=[
+            {"role": "system", "content": CATEGORY_INTENT_SYSTEM_PROMPT},
+            {"role": "user", "content": transcript},
+        ],
         timeout=timeout,
         base_url=base_url or None,
     )
@@ -1936,69 +1975,32 @@ def select_category_ids_with_api(
     timeout: float,
     base_url: str,
 ) -> list[str]:
-    secondary = [item for item in candidates if item["level"] == "xcat2"]
-    if secondary:
-        raw = call_category_selector(
-            f"用户购物需求：{transcript}\n{intent_system_prompt(secondary)}",
-            api_key=api_key,
-            model=model,
-            timeout=timeout,
-            base_url=base_url,
-        )
-        selected_id = str(raw.get("category_id", "")).strip()
-        return [selected_id] if any(item["id"] == selected_id for item in secondary) else []
-
-    group_scores = call_category_selector(
-        category_group_scoring_prompt(transcript),
+    raw = call_category_selector(
+        transcript,
         api_key=api_key,
         model=model,
         timeout=timeout,
         base_url=base_url,
     )
-    scored_groups: list[tuple[int, str]] = []
-    valid_groups = {item[0] for item in CATEGORY_GROUPS}
-    for group_id, value in group_scores.items():
-        if group_id not in valid_groups:
-            continue
-        try:
-            score = max(0, min(3, int(value)))
-        except (TypeError, ValueError):
-            continue
-    scored_groups.append((score, group_id))
-    scored_groups.sort(key=lambda item: (-item[0], item[1]))
-    strongest = [item for item in scored_groups if item[0] == 3][:4]
-    if not 1 <= len(strongest) <= 2:
+    categories = raw.get("categories")
+    if not isinstance(categories, list):
         return []
-
-    group_candidates: list[tuple[str, list[dict[str, str]]]] = []
-    for _, group_id in strongest:
-        options = [
-            item for item in candidates
-            if item["level"] == "xcat1" and category_group_for(item["name"]) == group_id
-        ]
-        if options:
-            group_candidates.append((group_id, options))
-
-    def select_one(item: tuple[str, list[dict[str, str]]]) -> str:
-        _, options = item
-        try:
-            raw = call_category_selector(
-                f"用户购物需求：{transcript}\n{intent_system_prompt(options)}",
-                api_key=api_key,
-                model=model,
-                timeout=timeout,
-                base_url=base_url,
-            )
-        except Exception:
-            return ""
-        selected_id = str(raw.get("category_id", "")).strip()
-        return selected_id if any(option["id"] == selected_id for option in options) else ""
-
-    if not group_candidates:
-        return []
-    with ThreadPoolExecutor(max_workers=min(4, len(group_candidates))) as executor:
-        selected_ids = list(executor.map(select_one, group_candidates))
-    return list(dict.fromkeys(value for value in selected_ids if value))
+    candidate_id_by_name = {
+        item["name"]: item["id"]
+        for item in candidates
+        if item["level"] == "xcat2"
+    }
+    selected_ids: list[str] = []
+    for value in categories[:12]:
+        if not isinstance(value, str):
+            continue
+        name = value.strip()
+        if name not in ALLOWED_INTENT_CATEGORY_SET:
+            continue
+        candidate_id = candidate_id_by_name.get(name)
+        if candidate_id and candidate_id not in selected_ids:
+            selected_ids.append(candidate_id)
+    return selected_ids
 
 
 def category_delta_slots(intent: dict[str, Any]) -> list[dict[str, Any]]:
@@ -2020,61 +2022,76 @@ def category_delta_slots(intent: dict[str, Any]) -> list[dict[str, Any]]:
     return result
 
 
-def select_category_delta_with_api(
+def apply_category_delta_polarity(
+    candidates: list[dict[str, str]],
+    raw: dict[str, list[str]],
     delta_slots: list[dict[str, Any]],
-    *,
-    api_key: str,
-    model: str,
-    timeout: float,
-    base_url: str,
-) -> tuple[list[dict[str, str]], dict[str, list[str]]]:
-    """Map every explicit add/remove phrase onto the existing taxonomy."""
+) -> None:
+    """Apply explicit add/remove wording without making another model call."""
+    negative = [item for item in delta_slots if item["operator"] == "neq"]
+    positive = [item for item in delta_slots if item["operator"] == "eq"]
+    if not negative:
+        return
 
-    def resolve(delta: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:
-        query = delta["query"]
-        candidates = category_selection_candidates(query)
-        hinted_names = CATEGORY_DELTA_TAXONOMY_HINTS.get(query, ())
-        if hinted_names:
-            hinted = [
-                item
-                for item in candidates
-                if item["level"] == "xcat1" and item["name"] in hinted_names
-            ]
-            if hinted:
-                return delta["operator"], hinted
-        selected_ids = select_category_ids_with_api(
-            query,
-            candidates,
-            api_key=api_key,
-            model=model,
-            timeout=timeout,
-            base_url=base_url,
+    negative_parents = {
+        parent
+        for item in negative
+        for parent in CATEGORY_DELTA_TAXONOMY_HINTS.get(item["query"], ())
+    }
+    candidate_by_id = {item["id"]: item for item in candidates}
+
+    for candidate_id in list(raw["include_ids"]):
+        candidate = candidate_by_id.get(candidate_id)
+        if not candidate:
+            continue
+        belongs_to_negative = (
+            candidate["level"] == "xcat2"
+            and candidate["parent"] in negative_parents
         )
-        candidate_by_id = {item["id"]: item for item in candidates}
-        return delta["operator"], [
-            candidate_by_id[candidate_id]
-            for candidate_id in selected_ids
-            if candidate_id in candidate_by_id
+        if belongs_to_negative or not positive:
+            raw["include_ids"].remove(candidate_id)
+            if candidate_id not in raw["exclude_ids"]:
+                raw["exclude_ids"].append(candidate_id)
+
+    def add_candidate(level: str, name: str, parent: str = "") -> str:
+        for candidate in candidates:
+            if (
+                candidate["level"] == level
+                and candidate["name"] == name
+                and candidate["parent"] == parent
+            ):
+                return candidate["id"]
+        candidate_id = f"c{len(candidates) + 1:03d}"
+        candidates.append({
+            "id": candidate_id,
+            "level": level,
+            "name": name,
+            "parent": parent,
+        })
+        return candidate_id
+
+    for item in negative:
+        query = item["query"]
+        hinted_parents = CATEGORY_DELTA_TAXONOMY_HINTS.get(query, ())
+        if hinted_parents:
+            for parent in hinted_parents:
+                if parent not in TAXONOMY_PARENT_NAMES:
+                    continue
+                candidate_id = add_candidate("xcat1", parent)
+                if candidate_id not in raw["exclude_ids"]:
+                    raw["exclude_ids"].append(candidate_id)
+            continue
+        matches = [
+            candidate
+            for candidate in category_selection_candidates(query)
+            if candidate["level"] == "xcat2"
         ]
-
-    with ThreadPoolExecutor(max_workers=min(4, len(delta_slots))) as executor:
-        resolved = list(executor.map(resolve, delta_slots))
-
-    candidates: list[dict[str, str]] = []
-    candidate_ids: dict[tuple[str, str, str], str] = {}
-    raw = {"include_ids": [], "exclude_ids": []}
-    for operator, items in resolved:
-        field = "exclude_ids" if operator == "neq" else "include_ids"
-        for item in items:
-            key = (item["level"], item["parent"], item["name"])
-            candidate_id = candidate_ids.get(key)
-            if candidate_id is None:
-                candidate_id = f"c{len(candidates) + 1:03d}"
-                candidate_ids[key] = candidate_id
-                candidates.append({**item, "id": candidate_id})
-            if candidate_id not in raw[field]:
-                raw[field].append(candidate_id)
-    return candidates, raw
+        for match in matches[:5]:
+            candidate_id = add_candidate("xcat2", match["name"], match["parent"])
+            if candidate_id in raw["include_ids"]:
+                raw["include_ids"].remove(candidate_id)
+            if candidate_id not in raw["exclude_ids"]:
+                raw["exclude_ids"].append(candidate_id)
 
 
 def parse_intent_with_api(transcript: str) -> dict[str, Any]:
@@ -2089,31 +2106,18 @@ def parse_intent_with_api(transcript: str) -> dict[str, Any]:
         raise IntentAPIError("INTENT_API_TIMEOUT 必须是数字") from exc
     rule_intent = parse_intent_with_rules(transcript)
     delta_slots = category_delta_slots(rule_intent)
-    has_explicit_removal = any(item["operator"] == "neq" for item in delta_slots)
-    has_guardrailed_category = any(
-        item["query"] in CATEGORY_DELTA_TAXONOMY_HINTS
-        for item in delta_slots
-    )
     try:
-        if has_explicit_removal or has_guardrailed_category:
-            candidates, raw = select_category_delta_with_api(
-                delta_slots,
-                api_key=api_key,
-                model=model,
-                timeout=timeout,
-                base_url=base_url,
-            )
-        else:
-            candidates = category_selection_candidates(transcript)
-            selected_ids = select_category_ids_with_api(
-                transcript,
-                candidates,
-                api_key=api_key,
-                model=model,
-                timeout=timeout,
-                base_url=base_url,
-            )
-            raw = {"include_ids": selected_ids, "exclude_ids": []}
+        candidates = api_category_candidates()
+        selected_ids = select_category_ids_with_api(
+            transcript,
+            candidates,
+            api_key=api_key,
+            model=model,
+            timeout=timeout,
+            base_url=base_url,
+        )
+        raw = {"include_ids": selected_ids, "exclude_ids": []}
+        apply_category_delta_polarity(candidates, raw, delta_slots)
     except IntentAPIError:
         raise
     except Exception as exc:
