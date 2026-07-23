@@ -299,7 +299,7 @@ class RealCatalogTests(unittest.TestCase):
         self.assertIn("state.lastSelectionFallback ? [] : state.recommendationIds", source)
 
     def test_seven_preset_prompts_use_their_own_workbook_products(self):
-        expected_counts = [10, 10, 10, 12, 12, 12, 10]
+        expected_counts = [10, 10, 10, 12, 13, 12, 10]
         self.assertEqual(len(app.SCENARIO_PRESETS), 7)
         self.assertEqual(
             [len(item["products"]) for item in app.SCENARIO_PRESETS],

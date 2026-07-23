@@ -1050,19 +1050,20 @@
         },
         {
           "id": "preset-scenario-2-q2-02",
-          "title": "ZROZccd相机高清数码学生党女生入门校园旅游便捷随身照美颜拍摄",
-          "category": "CCD风格相机",
-          "xcat1": "数码相机/单反相机/摄像机",
-          "xcat2": "CCD风格相机",
-          "price": 364,
-          "image": "https://img.alicdn.com/imgextra/i1/3599305607/O1CN01WJkVYG1rI3qWepmjl_!!3599305607.jpg",
-          "ordercost": 15759.0,
-          "sales": "15,759人收藏",
+          "title": "Wilson威尔胜轻巧减震大拍面女生大学生草莓青柠薄荷绿初学网球拍",
+          "category": "球拍",
+          "xcat1": "运动/瑜伽/健身/球迷用品",
+          "xcat2": "网球",
+          "price": 340,
+          "image": "https://img.alicdn.com/imgextra/i3/1971815496/O1CN0160gUIf1qTDuJIJ7Pj_!!4611686018427380808-0-item_pic.jpg",
+          "ordercost": 64061.0,
+          "sales": "64,061人收藏",
           "attributes": [
-            "数码相机/单反相机/摄像机",
-            "CCD风格相机"
+            "运动/瑜伽/健身/球迷用品",
+            "网球",
+            "球拍"
           ],
-          "baseScore": 15759.0,
+          "baseScore": 64061.0,
           "novelty": 0,
           "brand": "淘宝",
           "origin": "",
@@ -1073,6 +1074,30 @@
         },
         {
           "id": "preset-scenario-2-q2-03",
+          "title": "La Nikar白色网球裙女跑步速干弹力防走光运动羽毛球短裙半身裙",
+          "category": "半身裙",
+          "xcat1": "运动服/休闲服装",
+          "xcat2": "运动裙",
+          "price": 298,
+          "image": "https://img.alicdn.com/imgextra/i1/2934168220/O1CN01D7JMFg2AaooabwNhK_!!2934168220.jpg",
+          "ordercost": 41192.0,
+          "sales": "41,192人收藏",
+          "attributes": [
+            "运动服/休闲服装",
+            "运动裙",
+            "半身裙"
+          ],
+          "baseScore": 41192.0,
+          "novelty": 0,
+          "brand": "淘宝",
+          "origin": "",
+          "audiences": [],
+          "styles": [],
+          "goals": [],
+          "trend": 0
+        },
+        {
+          "id": "preset-scenario-2-q2-04",
           "title": "KFCONCEPT卓尔云卷包相机包单肩摄影包富士微单xs20保护套数码相机斜跨包旅行骑行收纳内胆包配件佳能R8r50",
           "category": "收纳包袋",
           "xcat1": "3C数码配件",
@@ -1096,7 +1121,7 @@
           "trend": 0
         },
         {
-          "id": "preset-scenario-2-q2-04",
+          "id": "preset-scenario-2-q2-05",
           "title": "骆驼经典帐篷户外野营过夜便携式折叠全自动加厚黑胶露营装备全套",
           "category": "帐篷",
           "xcat1": "户外/登山/野营/旅行用品",
@@ -1120,7 +1145,7 @@
           "trend": 0
         },
         {
-          "id": "preset-scenario-2-q2-05",
+          "id": "preset-scenario-2-q2-06",
           "title": "露营车户外可折叠推车超大营地车野餐车拖车野营手拉杆摆摊小推车",
           "category": "\\N",
           "xcat1": "户外/登山/野营/旅行用品",
@@ -1144,7 +1169,7 @@
           "trend": 0
         },
         {
-          "id": "preset-scenario-2-q2-06",
+          "id": "preset-scenario-2-q2-07",
           "title": "吊床户外秋千大人儿童双人家用防侧翻野外懒人吊椅宿舍寝室大学生",
           "category": "床",
           "xcat1": "户外/登山/野营/旅行用品",
@@ -1168,7 +1193,7 @@
           "trend": 0
         },
         {
-          "id": "preset-scenario-2-q2-07",
+          "id": "preset-scenario-2-q2-08",
           "title": "弹力带练臀瑜伽用品阻力带健身女力量训练器材拉伸环形足球拉力圈",
           "category": "瑜伽拉力带",
           "xcat1": "运动/瑜伽/健身/球迷用品",
@@ -1192,7 +1217,7 @@
           "trend": 0
         },
         {
-          "id": "preset-scenario-2-q2-08",
+          "id": "preset-scenario-2-q2-09",
           "title": "瑜伽垫健身垫家用官方旗舰店加大加宽加厚防滑减震静音跳操垫子地",
           "category": "垫子",
           "xcat1": "运动/瑜伽/健身/球迷用品",
@@ -1216,7 +1241,7 @@
           "trend": 0
         },
         {
-          "id": "preset-scenario-2-q2-09",
+          "id": "preset-scenario-2-q2-10",
           "title": "迪卡侬运动护膝女专业透气膝盖徒步登山骑行篮球跑步护具男CSH6",
           "category": "运动护具（新）",
           "xcat1": "运动/瑜伽/健身/球迷用品",
@@ -1239,7 +1264,7 @@
           "trend": 0
         },
         {
-          "id": "preset-scenario-2-q2-10",
+          "id": "preset-scenario-2-q2-11",
           "title": "DAHON大行P8折叠自行车经典20英寸变速超轻成人男女式单车KBC083",
           "category": "自行车",
           "xcat1": "自行车/骑行装备/零配件",
@@ -1263,7 +1288,7 @@
           "trend": 0
         },
         {
-          "id": "preset-scenario-2-q2-11",
+          "id": "preset-scenario-2-q2-12",
           "title": "卡普沃Kapvoe骑行眼镜徒步登山专业日夜两用近视自行车防风护目镜",
           "category": "眼镜",
           "xcat1": "自行车/骑行装备/零配件",
@@ -1287,7 +1312,7 @@
           "trend": 0
         },
         {
-          "id": "preset-scenario-2-q2-12",
+          "id": "preset-scenario-2-q2-13",
           "title": "运动拇指相机骑行防抖记录仪胸前固定口袋随身小型便携式高清vlgo",
           "category": "摄像机",
           "xcat1": "数码相机/单反相机/摄像机",
