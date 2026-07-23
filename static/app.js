@@ -365,6 +365,37 @@ async function intentCatalogProductIds(transcript, conditions) {
   return products.map((item) => item.id);
 }
 
+async function freshnessCatalogProductIds(transcript, conditions) {
+  const normalized = String(transcript || "").replace(/\s/g, "");
+  const isFreshness = /(看腻了|有点腻|换点新鲜|看看新的|换一批|来点新鲜)/.test(normalized) ||
+    conditions.some((condition) => condition.sourceKey === "freshness");
+  if (!isFreshness) return [];
+  if (!state.intentCatalogCache.has("freshness")) {
+    const response = await fetch("data/intent-products/freshness.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("新鲜感商品加载失败");
+    const payload = await response.json();
+    state.intentCatalogCache.set("freshness", (payload.products || [])
+      .filter((item) => !String(item.title || "").includes("测试商品请不要拍")));
+  }
+  const products = state.intentCatalogCache.get("freshness");
+  for (const item of products) state.products.set(item.id, item);
+  return products.map((item) => item.id);
+}
+
+function applyFreshnessCatalogFallback(result, productIds) {
+  if (result.intent.type !== "unknown" || !productIds.length) return;
+  const condition = {
+    name: "goal", operator: "eq", value: "新鲜感", strength: "soft",
+    label: "换点新鲜的", sourceMode: "explore", sourceKey: "freshness",
+  };
+  result.intent = { type: "explore", mode: "explore", modeLabel: "探索意图", slots: [condition] };
+  result.sessionIntent = [
+    ...state.sessionIntent.filter((item) => item.sourceKey !== "freshness"),
+    condition,
+  ];
+  result.feedback = "已为你换一批新鲜好物";
+}
+
 async function loadCategoryCatalogIndex() {
   if (state.categoryCatalogIndex) return state.categoryCatalogIndex;
   const response = await fetch("data/intent-catalog/index.json", { cache: "no-store" });
@@ -904,6 +935,8 @@ async function applyTranscript(transcript) {
     });
     const categoryCatalog = await categoryCatalogProducts(transcript, result.sessionIntent || []);
     applyCategoryCatalogFallback(result, categoryCatalog);
+    const freshnessCatalogIds = await freshnessCatalogProductIds(transcript, result.sessionIntent || []);
+    applyFreshnessCatalogFallback(result, freshnessCatalogIds);
     const intentCatalogIds = await intentCatalogProductIds(transcript, result.sessionIntent || []);
     applyIntentCatalogFallback(result, intentCatalogIds);
     if (!applyHomeCatalogIntentFallback(result, transcript)) {
@@ -913,9 +946,10 @@ async function applyTranscript(transcript) {
     (result.products || []).forEach((item) => state.products.set(item.id, item));
     state.sessionIntent = result.sessionIntent;
     if (state.scene === "recommend") {
-      state.activeIntentProductIds = intentCatalogIds;
+      state.activeIntentProductIds = freshnessCatalogIds.length ? freshnessCatalogIds : intentCatalogIds;
       const catalogIds = rankHomeCatalogForIntent(result.sessionIntent);
       state.recommendationIds = usableResultIds(
+        freshnessCatalogIds,
         intentCatalogIds,
         categoryCatalog.ids,
         catalogIds,
