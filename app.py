@@ -17,6 +17,7 @@ ROOT = Path(__file__).parent
 STATIC_DIR = ROOT / "static"
 HOME_CATALOG_PATH = STATIC_DIR / "data" / "home-products.json"
 SCENARIO_CATALOG_PATH = STATIC_DIR / "data" / "scenario-products.json"
+EXAMPLE_CATALOG_PATH = STATIC_DIR / "data" / "example-products.json"
 _WHALE_CONFIG_LOCK = threading.Lock()
 _WHALE_CONFIG_SIGNATURE: tuple[str, str] | None = None
 _HOME_CATALOG_GZIP: bytes | None = None
@@ -523,6 +524,8 @@ INITIAL_SEARCH_RESULTS: list[str] = []
 
 SCENARIO_CATALOG = json.loads(SCENARIO_CATALOG_PATH.read_text(encoding="utf-8"))
 SCENARIO_PRESETS: list[dict[str, Any]] = SCENARIO_CATALOG["presets"]
+EXAMPLE_CATALOG = json.loads(EXAMPLE_CATALOG_PATH.read_text(encoding="utf-8"))
+EXAMPLE_GUIDES: list[dict[str, Any]] = EXAMPLE_CATALOG["examples"]
 
 
 def normalize_preset_prompt(value: str) -> str:
@@ -574,6 +577,14 @@ def preset_scenario_for(transcript: str) -> dict[str, Any] | None:
     for matcher in SCENARIO_PRESET_MATCHERS:
         if re.search(matcher["pattern"], normalized):
             return SCENARIO_PRESET_BY_KEY[matcher["key"]]
+    return None
+
+
+def example_guide_for(transcript: str) -> dict[str, Any] | None:
+    normalized = normalize_preset_prompt(transcript)
+    for guide in EXAMPLE_GUIDES:
+        if re.search(guide["pattern"], normalized):
+            return guide
     return None
 
 
@@ -2590,6 +2601,56 @@ def products_for_ranked_results(ranked: dict[str, list[str]]) -> list[dict[str, 
     ]
 
 
+def example_guide_response(transcript: str) -> dict[str, Any] | None:
+    guide = example_guide_for(transcript)
+    if guide is None:
+        return None
+    bubbles = [
+        preset_bubble(
+            f"example-{guide['key']}-{index}",
+            label,
+            group=f"example-{guide['key']}",
+        )
+        for index, label in enumerate(guide["bubbles"], start=1)
+    ]
+    products = guide["products"]
+    intent = {
+        "type": "showcase",
+        "polarity": "neutral",
+        "slots": bubbles,
+        "scope": "turn",
+        "transcript": transcript,
+        "showcaseKey": guide["key"],
+        "selectedCategories": [],
+        "excludedCategories": [],
+        "selectionFallback": False,
+        **mode_payload(
+            "scenario",
+            confidence=1.0,
+            evidence=[guide["prompt"]],
+            route_name="example_showcase",
+            route_label="示例场景",
+            route_summary=f"直接展示 {guide['key']} 的精选商品集",
+        ),
+    }
+    return {
+        "intent": intent,
+        "engine": {
+            "mode": intent["mode"],
+            "modeLabel": intent["modeLabel"],
+            "confidence": intent["confidence"],
+            "evidence": intent["evidence"],
+            "route": intent["route"],
+        },
+        "sessionIntent": bubbles,
+        "resultIds": [item["id"] for item in products],
+        "nearMatchIds": [],
+        "products": products,
+        "fallbackApplied": False,
+        "feedback": guide["feedback"],
+    }
+
+
 def preset_scenario_response(
     transcript: str,
     existing: list[dict[str, Any]] | None = None,
@@ -2753,6 +2814,10 @@ class DemoHandler(SimpleHTTPRequestHandler):
                 existing = payload.get("sessionIntent", [])
                 if not isinstance(existing, list):
                     raise ValueError("sessionIntent 必须是数组")
+                example_response = example_guide_response(transcript)
+                if example_response is not None:
+                    self.send_json(example_response)
+                    return
                 preset_response = preset_scenario_response(transcript, existing)
                 if preset_response is not None:
                     self.send_json(preset_response)

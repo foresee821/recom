@@ -38,6 +38,8 @@ STATIC_ENGINE = r"""
   const precomputed = __INTENTS__;
   const presetResponses = __PRESET_RESPONSES__;
   const presetMatchers = __PRESET_MATCHERS__;
+  const exampleResponses = __EXAMPLE_RESPONSES__;
+  const exampleMatchers = __EXAMPLE_MATCHERS__;
   const products = new Map(bootstrap.products.map((item) => [item.id, item]));
   const groupPrefixes = {
     rental: "rental-",
@@ -77,11 +79,21 @@ STATIC_ENGINE = r"""
   const compiledPresetMatchers = presetMatchers.map(({ key, pattern }) => (
     { key, pattern: new RegExp(pattern) }
   ));
+  const exampleResponseByKey = new Map(Object.entries(exampleResponses));
+  const compiledExampleMatchers = exampleMatchers.map(({ key, pattern }) => (
+    { key, pattern: new RegExp(pattern) }
+  ));
 
   function matchPresetResponse(transcript) {
     const text = normalize(transcript);
     const matcher = compiledPresetMatchers.find((item) => item.pattern.test(text));
     return matcher ? presetResponseByKey.get(matcher.key) : null;
+  }
+
+  function matchExampleResponse(transcript) {
+    const text = normalize(transcript);
+    const matcher = compiledExampleMatchers.find((item) => item.pattern.test(text));
+    return matcher ? exampleResponseByKey.get(matcher.key) : null;
   }
 
   function clone(value) {
@@ -269,6 +281,8 @@ STATIC_ENGINE = r"""
     }
     if (path === "/api/intent/apply") {
       const payload = JSON.parse(options.body || "{}");
+      const exampleResponse = matchExampleResponse(payload.transcript);
+      if (exampleResponse) return clone(exampleResponse);
       const presetResponse = matchPresetResponse(payload.transcript);
       if (presetResponse) {
         const response = clone(presetResponse);
@@ -351,6 +365,10 @@ def build() -> None:
         preset["key"]: app.preset_scenario_response(preset["prompt"])
         for preset in app.SCENARIO_PRESETS
     }
+    example_responses = {
+        guide["key"]: app.example_guide_response(guide["prompt"])
+        for guide in app.EXAMPLE_GUIDES
+    }
     engine = STATIC_ENGINE.replace(
         "__BOOTSTRAP__",
         json.dumps(bootstrap, ensure_ascii=False, separators=(",", ":")),
@@ -363,6 +381,16 @@ def build() -> None:
     ).replace(
         "__PRESET_MATCHERS__",
         json.dumps(app.SCENARIO_PRESET_MATCHERS, ensure_ascii=False, separators=(",", ":")),
+    ).replace(
+        "__EXAMPLE_RESPONSES__",
+        json.dumps(example_responses, ensure_ascii=False, separators=(",", ":")),
+    ).replace(
+        "__EXAMPLE_MATCHERS__",
+        json.dumps(
+            [{"key": guide["key"], "pattern": guide["pattern"]} for guide in app.EXAMPLE_GUIDES],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
     )
     (CLIENT / "demo-static.js").write_text(engine, encoding="utf-8")
 

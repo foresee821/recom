@@ -415,9 +415,45 @@ class RealCatalogTests(unittest.TestCase):
         preset_prompts = {preset["prompt"] for preset in app.SCENARIO_PRESETS}
         self.assertTrue(preset_prompts.isdisjoint(visible_examples))
 
+    def test_all_visible_examples_have_deterministic_products_in_both_builds(self):
+        visible_examples = app.bootstrap_payload()["examples"]["recommend"]
+        expected_keys = [
+            "style-refresh",
+            "summer-wear",
+            "fresh-discovery",
+            "weekend-play",
+            "fitness-start",
+            "italy-trip",
+        ]
+        responses = [
+            app.example_guide_response(transcript)
+            for transcript in visible_examples
+        ]
+        self.assertEqual(
+            [response["intent"]["showcaseKey"] for response in responses],
+            expected_keys,
+        )
+        for response in responses:
+            with self.subTest(key=response["intent"]["showcaseKey"]):
+                self.assertEqual(response["intent"]["type"], "showcase")
+                self.assertGreaterEqual(len(response["products"]), 10)
+                self.assertEqual(
+                    response["resultIds"],
+                    [item["id"] for item in response["products"]],
+                )
+                self.assertTrue(all(
+                    item["image"].startswith("https://img.alicdn.com/")
+                    for item in response["products"]
+                ))
+                self.assertTrue(response["sessionIntent"])
+
     def test_preset_route_precedes_model_intent_parsing(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         handler = source[source.index("    def do_POST(self) -> None:"):]
+        self.assertLess(
+            handler.index("example_response = example_guide_response(transcript)"),
+            handler.index("preset_response = preset_scenario_response(transcript, existing)"),
+        )
         self.assertLess(
             handler.index("preset_response = preset_scenario_response(transcript, existing)"),
             handler.index("intent = parse_intent(transcript)"),
@@ -431,6 +467,9 @@ class RealCatalogTests(unittest.TestCase):
         source = (ROOT / "scripts" / "build_sites.py").read_text(encoding="utf-8")
         self.assertIn("const presetResponses = __PRESET_RESPONSES__;", source)
         self.assertIn("const presetMatchers = __PRESET_MATCHERS__;", source)
+        self.assertIn("const exampleResponses = __EXAMPLE_RESPONSES__;", source)
+        self.assertIn("const exampleMatchers = __EXAMPLE_MATCHERS__;", source)
+        self.assertIn("matchExampleResponse(payload.transcript)", source)
         self.assertIn("function applyPresetBubbleOps(existing, ops)", source)
         self.assertIn("matchPresetResponse(payload.transcript)", source)
         self.assertIn('os.environ["INTENT_ENGINE"] = "rules"', source)

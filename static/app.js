@@ -1068,22 +1068,24 @@ async function applyTranscript(transcript) {
       }),
     });
     const isPresetScenario = result.intent.type === "preset";
-    const categoryCatalog = isPresetScenario
+    const isShowcaseScenario = result.intent.type === "showcase";
+    const isFixedScenario = isPresetScenario || isShowcaseScenario;
+    const categoryCatalog = isFixedScenario
       ? { ids: [], matches: [] }
       : await categoryCatalogProducts(transcript, result.sessionIntent || []);
-    if (!isPresetScenario) applyCategoryCatalogFallback(result, categoryCatalog);
-    const freshnessCatalogIds = isPresetScenario
+    if (!isFixedScenario) applyCategoryCatalogFallback(result, categoryCatalog);
+    const freshnessCatalogIds = isFixedScenario
       ? []
       : await freshnessCatalogProductIds(transcript, result.sessionIntent || []);
-    if (!isPresetScenario) applyFreshnessCatalogFallback(result, freshnessCatalogIds);
-    const hobbyCatalogIds = isPresetScenario
+    if (!isFixedScenario) applyFreshnessCatalogFallback(result, freshnessCatalogIds);
+    const hobbyCatalogIds = isFixedScenario
       ? []
       : await hobbyCatalogProductIds(transcript, result.sessionIntent || []);
-    if (!isPresetScenario) applyHobbyCatalogFallback(result, hobbyCatalogIds);
-    const intentCatalogIds = isPresetScenario
+    if (!isFixedScenario) applyHobbyCatalogFallback(result, hobbyCatalogIds);
+    const intentCatalogIds = isFixedScenario
       ? []
       : await intentCatalogProductIds(transcript, result.sessionIntent || []);
-    if (!isPresetScenario) applyIntentCatalogFallback(result, intentCatalogIds);
+    if (!isFixedScenario) applyIntentCatalogFallback(result, intentCatalogIds);
     state.lastSelectionFallback = Boolean(result.intent.selectionFallback);
     if (!applyHomeCatalogIntentFallback(result, transcript)) {
       els.transcript.textContent = result.feedback;
@@ -1091,14 +1093,18 @@ async function applyTranscript(transcript) {
     }
     (result.products || []).forEach((item) => state.products.set(item.id, item));
     state.sessionIntent = result.sessionIntent;
-    state.activePresetKey = isPresetScenario ? result.intent.presetKey : null;
+    state.activePresetKey = isFixedScenario
+      ? result.intent.presetKey || result.intent.showcaseKey
+      : null;
     if (state.scene === "recommend") {
       state.activeIntentProductIds = hobbyCatalogIds.length
         ? hobbyCatalogIds
         : freshnessCatalogIds.length ? freshnessCatalogIds : intentCatalogIds;
-      if (isPresetScenario) {
+      if (isFixedScenario) {
         state.recommendationIds = [...result.resultIds];
-        els.subtitle.textContent = "已切换为预制情景商品";
+        els.subtitle.textContent = isPresetScenario
+          ? "已切换为预制情景商品"
+          : "已切换为示例场景商品";
       } else {
         const catalogIds = rankHomeCatalogForIntent(result.sessionIntent);
         state.recommendationIds = usableResultIds(
@@ -1126,7 +1132,7 @@ async function applyTranscript(transcript) {
     const keywordLabels = result.sessionIntent
       .filter((condition) => !condition.hidden)
       .map((condition) => condition.label);
-    els.voiceTitle.textContent = isPresetScenario
+    els.voiceTitle.textContent = isFixedScenario
       ? "已按情景更新推荐"
       : result.intent.selectionFallback
       ? "先为你推荐这些"
