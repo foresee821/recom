@@ -344,10 +344,21 @@ async function intentCatalogProductIds(transcript, conditions) {
     conditions.some((condition) => condition.sourceKey === "camping");
   if (!isCamping) return [];
   if (!state.intentCatalogCache.has("camping")) {
-    const response = await fetch("data/intent-products/camping.json", { cache: "no-store" });
-    if (!response.ok) throw new Error("露营商品加载失败");
-    const payload = await response.json();
-    state.intentCatalogCache.set("camping", payload.products || []);
+    const responses = await Promise.all([
+      fetch("data/intent-products/camping.json", { cache: "no-store" }),
+      fetch("data/intent-products/camping-new.json", { cache: "no-store" }),
+    ]);
+    if (responses.some((response) => !response.ok)) throw new Error("露营商品加载失败");
+    const [featured, expanded] = await Promise.all(responses.map((response) => response.json()));
+    const seen = new Set();
+    const products = [...(featured.products || []), ...(expanded.products || [])]
+      .filter((item) => {
+        const key = item.image || item.title || item.id;
+        if (seen.has(key) || String(item.title || "").includes("测试商品请不要拍")) return false;
+        seen.add(key);
+        return true;
+      });
+    state.intentCatalogCache.set("camping", products);
   }
   const products = state.intentCatalogCache.get("camping");
   for (const item of products) state.products.set(item.id, item);

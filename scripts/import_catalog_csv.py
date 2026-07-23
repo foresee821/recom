@@ -142,7 +142,7 @@ def main() -> None:
         item["attributes"] = list(dict.fromkeys(["露营", *item["attributes"]]))
         item["goals"] = ["露营"]
     write_json(
-        ROOT / "static" / "data" / "intent-products" / "camping.json",
+        ROOT / "static" / "data" / "intent-products" / "camping-new.json",
         {"scene": "camping", "triggers": ["露营", "野营", "野炊"], "products": camping},
     )
     print(

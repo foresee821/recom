@@ -69,12 +69,16 @@ class RealCatalogTests(unittest.TestCase):
         self.assertEqual(shard_total, index["productCount"])
 
     def test_camping_catalog_is_derived_from_the_new_catalog(self):
-        payload = json.loads(
+        featured = json.loads(
             (ROOT / "static" / "data" / "intent-products" / "camping.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(payload["triggers"], ["露营", "野营", "野炊"])
-        self.assertGreaterEqual(len(payload["products"]), 20)
-        self.assertTrue(all(item["id"].startswith("catalog-") for item in payload["products"]))
+        expanded = json.loads(
+            (ROOT / "static" / "data" / "intent-products" / "camping-new.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(len(featured["products"]), 19)
+        self.assertGreaterEqual(len(expanded["products"]), 20)
+        self.assertTrue(all(item["id"].startswith("intent-camping-") for item in featured["products"]))
+        self.assertTrue(all(item["id"].startswith("catalog-") for item in expanded["products"]))
 
     def test_homepage_catalog_remains_independent(self):
         home = json.loads((ROOT / "static" / "data" / "home-products.json").read_text(encoding="utf-8"))
