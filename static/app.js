@@ -144,6 +144,10 @@ const firstRoundHomepageLayout = {
     { id: "item-571346532690", insertIndex: 2 },
     { id: "item-594188372494", insertIndex: 4 },
     { id: "item-1016585476064", insertIndex: 5 },
+    { id: "item-18322316303", insertIndex: 6 },
+    { id: "item-538435011422", insertIndex: 7 },
+    { id: "item-43249505908", insertIndex: 8 },
+    { id: "item-571464701124", insertIndex: 9 },
   ],
 };
 
