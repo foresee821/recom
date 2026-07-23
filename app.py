@@ -1359,6 +1359,24 @@ CATEGORY_GROUP_KEYWORDS = {
     "g10": ("汽车", "摩托车", "电动车", "交通工具", "零部件"),
 }
 
+CATEGORY_DELTA_TAXONOMY_HINTS = {
+    # Broad spoken concepts need a small semantic guardrail because the
+    # available recall model can otherwise confuse clothing with outdoor gear.
+    # Every value is an existing first-level category from the live catalog.
+    "穿搭": ("女装/女士精品", "男装"),
+    "女装": ("女装/女士精品",),
+    "护肤": ("美容护肤/美体/精油",),
+    "美妆": ("彩妆/香水/美妆工具",),
+    "家居": ("居家日用", "住宅家具"),
+    "户外": ("户外/登山/野营/旅行用品",),
+    "办公": ("文具用品/文化用品/商务用品", "办公设备/耗材/相关服务"),
+    "食品": ("零食/坚果/特产",),
+    "宠物": ("宠物/宠物食品及用品",),
+    "母婴": ("婴童用品", "婴童奶粉"),
+    "数码": ("3C数码配件", "手机"),
+    "家电": ("生活电器", "厨房电器"),
+}
+
 
 def category_group_for(parent: str) -> str:
     for group_id, keywords in CATEGORY_GROUP_KEYWORDS.items():
@@ -1540,7 +1558,8 @@ def normalize_api_intent(
         return result
 
     include_slots = selected("include_ids", "eq")
-    selection_fallback = not include_slots
+    exclude_slots = selected("exclude_ids", "neq")
+    selection_fallback = not include_slots and not exclude_slots
     if selection_fallback:
         fallback_pool = [item for item in candidates if item["level"] == "xcat1"]
         fallback_count = min(len(fallback_pool), random.SystemRandom().randint(2, 4))
@@ -1552,7 +1571,7 @@ def normalize_api_intent(
             }
             for item in fallback
         ]
-    slots = include_slots + selected("exclude_ids", "neq")
+    slots = include_slots + exclude_slots
 
     for field, operator in (("price_lte", "lte"), ("price_gte", "gte")):
         value = raw.get(field)
@@ -1564,13 +1583,15 @@ def normalize_api_intent(
             slots.append(slot("price", operator, value, "hard", default_slot_label("price", operator, value)))
 
     names = [item["value"] for item in include_slots]
+    excluded_names = [item["value"] for item in exclude_slots]
     result = {
-        "type": "pull",
-        "polarity": "positive",
+        "type": "exclude" if exclude_slots and not include_slots else "pull",
+        "polarity": "mixed" if include_slots and exclude_slots else "negative" if exclude_slots else "positive",
         "slots": slots,
         "scope": "session",
         "transcript": transcript,
         "selectedCategories": names,
+        "excludedCategories": excluded_names,
         "selectionFallback": selection_fallback,
         **mode_payload(
             "product",
@@ -1581,7 +1602,7 @@ def normalize_api_intent(
             route_summary=f"优先推荐：{'、'.join(names)}",
         ),
     }
-    if len(include_slots) == 1:
+    if len(include_slots) == 1 and not exclude_slots:
         only = include_slots[0]
         if only["name"] == "xcat1":
             result["taxonomy"] = {"xcat1": only["value"], "xcat2": None}
@@ -1802,6 +1823,82 @@ def select_category_ids_with_api(
     return list(dict.fromkeys(value for value in selected_ids if value))
 
 
+def category_delta_slots(intent: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return explicit category additions/removals found in this utterance."""
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in intent.get("slots", []):
+        if item.get("name") not in ("category", "xcat1", "xcat2"):
+            continue
+        operator = item.get("operator")
+        value = item.get("value")
+        if operator not in ("eq", "neq") or not isinstance(value, str) or not value.strip():
+            continue
+        key = (operator, value.strip())
+        if key in seen:
+            continue
+        result.append({"operator": operator, "query": value.strip()})
+        seen.add(key)
+    return result
+
+
+def select_category_delta_with_api(
+    delta_slots: list[dict[str, Any]],
+    *,
+    api_key: str,
+    model: str,
+    timeout: float,
+    base_url: str,
+) -> tuple[list[dict[str, str]], dict[str, list[str]]]:
+    """Map every explicit add/remove phrase onto the existing taxonomy."""
+
+    def resolve(delta: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:
+        query = delta["query"]
+        candidates = category_selection_candidates(query)
+        hinted_names = CATEGORY_DELTA_TAXONOMY_HINTS.get(query, ())
+        if hinted_names:
+            hinted = [
+                item
+                for item in candidates
+                if item["level"] == "xcat1" and item["name"] in hinted_names
+            ]
+            if hinted:
+                return delta["operator"], hinted
+        selected_ids = select_category_ids_with_api(
+            query,
+            candidates,
+            api_key=api_key,
+            model=model,
+            timeout=timeout,
+            base_url=base_url,
+        )
+        candidate_by_id = {item["id"]: item for item in candidates}
+        return delta["operator"], [
+            candidate_by_id[candidate_id]
+            for candidate_id in selected_ids
+            if candidate_id in candidate_by_id
+        ]
+
+    with ThreadPoolExecutor(max_workers=min(4, len(delta_slots))) as executor:
+        resolved = list(executor.map(resolve, delta_slots))
+
+    candidates: list[dict[str, str]] = []
+    candidate_ids: dict[tuple[str, str, str], str] = {}
+    raw = {"include_ids": [], "exclude_ids": []}
+    for operator, items in resolved:
+        field = "exclude_ids" if operator == "neq" else "include_ids"
+        for item in items:
+            key = (item["level"], item["parent"], item["name"])
+            candidate_id = candidate_ids.get(key)
+            if candidate_id is None:
+                candidate_id = f"c{len(candidates) + 1:03d}"
+                candidate_ids[key] = candidate_id
+                candidates.append({**item, "id": candidate_id})
+            if candidate_id not in raw[field]:
+                raw[field].append(candidate_id)
+    return candidates, raw
+
+
 def parse_intent_with_api(transcript: str) -> dict[str, Any]:
     api_key = first_env("INTENT_API_KEY", "WHALE_API_KEY")
     model = first_env("INTENT_API_MODEL", "WHALE_API_MODEL")
@@ -1812,23 +1909,35 @@ def parse_intent_with_api(transcript: str) -> dict[str, Any]:
         timeout = float(os.environ.get("INTENT_API_TIMEOUT", "20"))
     except ValueError as exc:
         raise IntentAPIError("INTENT_API_TIMEOUT 必须是数字") from exc
-    candidates = category_selection_candidates(transcript)
+    rule_intent = parse_intent_with_rules(transcript)
+    delta_slots = category_delta_slots(rule_intent)
+    has_explicit_removal = any(item["operator"] == "neq" for item in delta_slots)
     try:
-        selected_ids = select_category_ids_with_api(
-            transcript,
-            candidates,
-            api_key=api_key,
-            model=model,
-            timeout=timeout,
-            base_url=base_url,
-        )
+        if has_explicit_removal:
+            candidates, raw = select_category_delta_with_api(
+                delta_slots,
+                api_key=api_key,
+                model=model,
+                timeout=timeout,
+                base_url=base_url,
+            )
+        else:
+            candidates = category_selection_candidates(transcript)
+            selected_ids = select_category_ids_with_api(
+                transcript,
+                candidates,
+                api_key=api_key,
+                model=model,
+                timeout=timeout,
+                base_url=base_url,
+            )
+            raw = {"include_ids": selected_ids, "exclude_ids": []}
     except IntentAPIError:
         raise
     except Exception as exc:
         detail = str(exc).replace(api_key, "***")[:300]
         raise IntentAPIError(f"Whale 意图识别调用失败：{detail}") from exc
-    raw: dict[str, Any] = {"include_ids": selected_ids, "exclude_ids": []}
-    rule_slots = parse_intent_with_rules(transcript).get("slots", [])
+    rule_slots = rule_intent.get("slots", [])
     for condition in rule_slots:
         if condition["name"] != "price":
             continue
@@ -1846,6 +1955,30 @@ def condition_key(condition: dict[str, Any]) -> tuple[str, Any]:
     return condition["name"], condition["value"]
 
 
+def taxonomy_conditions_related(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    taxonomy_names = {"category", "xcat1", "xcat2"}
+    if left.get("name") not in taxonomy_names or right.get("name") not in taxonomy_names:
+        return False
+    left_value = str(left.get("value", ""))
+    right_value = str(right.get("value", ""))
+    if normalize_taxonomy_text(left_value) == normalize_taxonomy_text(right_value):
+        return True
+    xcat2_parents = {item["xcat2"]: item["xcat1"] for item in TAXONOMY_CATEGORIES}
+    if left.get("name") == "xcat1" and right.get("name") == "xcat2":
+        return xcat2_parents.get(right_value) == left_value
+    if left.get("name") == "xcat2" and right.get("name") == "xcat1":
+        return xcat2_parents.get(left_value) == right_value
+    if "category" in (left.get("name"), right.get("name")):
+        left_normalized = normalize_taxonomy_text(left_value)
+        right_normalized = normalize_taxonomy_text(right_value)
+        return (
+            len(left_normalized) >= 2
+            and len(right_normalized) >= 2
+            and (left_normalized in right_normalized or right_normalized in left_normalized)
+        )
+    return False
+
+
 def merge_conditions(existing: list[dict[str, Any]], intent: dict[str, Any]) -> list[dict[str, Any]]:
     # Random fallback slots only drive the current feed. They are not user
     # preferences, so replace them on every turn instead of accumulating them.
@@ -1859,9 +1992,8 @@ def merge_conditions(existing: list[dict[str, Any]], intent: dict[str, Any]) -> 
             if condition_key(item) != condition_key(incoming)
             and not (
                 opposite
-                and item["name"] == incoming["name"]
-                and item["value"] == incoming["value"]
                 and item["operator"] == opposite
+                and taxonomy_conditions_related(item, incoming)
             )
         ]
         merged.append(dict(incoming))
@@ -2240,6 +2372,14 @@ def feedback_for(intent: dict[str, Any]) -> str:
     if intent["type"] == "unknown":
         return "先为你推荐一些热门好物，你也可以继续补充偏好"
     selected_categories = intent.get("selectedCategories", [])
+    excluded_categories = intent.get("excludedCategories", [])
+    if selected_categories and excluded_categories:
+        return (
+            f"已减少{'、'.join(excluded_categories)}，"
+            f"增加{'、'.join(selected_categories)}"
+        )
+    if excluded_categories:
+        return f"已减少{'、'.join(excluded_categories)}"
     if selected_categories:
         if intent.get("selectionFallback"):
             return "先为你推荐这些"

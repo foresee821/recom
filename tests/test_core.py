@@ -74,6 +74,48 @@ class CategorySelectorTests(unittest.TestCase):
         self.assertIn(("price", "lte", 500), slots)
         self.assertFalse(any(value == "不存在的类目" for _, _, value in slots))
 
+    def test_exclude_only_does_not_trigger_random_fallback(self):
+        candidates = [
+            {"id": "c001", "level": "xcat1", "name": "美容护肤/美体/精油", "parent": ""},
+        ]
+        intent = app.normalize_api_intent({
+            "include_ids": [],
+            "exclude_ids": ["c001"],
+        }, "不要看护肤了", candidates)
+
+        self.assertFalse(intent["selectionFallback"])
+        self.assertEqual(intent["selectedCategories"], [])
+        self.assertEqual(intent["excludedCategories"], ["美容护肤/美体/精油"])
+        self.assertEqual(
+            [(item["name"], item["operator"], item["value"]) for item in intent["slots"]],
+            [("xcat1", "neq", "美容护肤/美体/精油")],
+        )
+
+    def test_api_maps_mixed_add_and_remove_to_real_categories(self):
+        def fake_select(query, candidates, **_kwargs):
+            target = (
+                "美容护肤/美体/精油"
+                if query == "护肤"
+                else "女装/女士精品"
+            )
+            return [next(item["id"] for item in candidates if item["name"] == target)]
+
+        with patch.object(app, "select_category_ids_with_api", side_effect=fake_select):
+            with patch.dict(os.environ, {
+                "INTENT_API_KEY": "test-key",
+                "INTENT_API_MODEL": "test-model",
+            }):
+                intent = app.parse_intent_with_api("现在不要看护肤了，看看穿搭")
+
+        slots = {(item["name"], item["operator"], item["value"]) for item in intent["slots"]}
+        self.assertEqual(intent["polarity"], "mixed")
+        self.assertIn(("xcat1", "neq", "美容护肤/美体/精油"), slots)
+        self.assertIn(("xcat1", "eq", "女装/女士精品"), slots)
+        self.assertEqual(
+            app.feedback_for(intent),
+            "已减少美容护肤/美体/精油，增加女装/女士精品、男装",
+        )
+
     def test_empty_model_selection_randomly_samples_real_categories_without_rejection_copy(self):
         candidates = app.category_selection_candidates("随便看看")
         pool = [item for item in candidates if item["level"] == "xcat1"]
@@ -133,6 +175,25 @@ class CategorySelectorTests(unittest.TestCase):
             [(item["name"], item["value"], item.get("hidden", False)) for item in merged],
             [("price", 800, False), ("xcat1", "新随机类目", True)],
         )
+
+    def test_negative_category_retracts_related_positive_condition(self):
+        existing = [
+            app.slot("xcat1", "eq", "美容护肤/美体/精油", "soft", "美容护肤/美体/精油"),
+            app.slot("price", "lte", 800, "hard", "≤¥800"),
+        ]
+        incoming = {
+            "slots": [
+                app.slot("xcat2", "neq", "面部护理套装", "soft", "排除面部护理套装"),
+                app.slot("xcat1", "eq", "女装/女士精品", "soft", "女装/女士精品"),
+            ],
+        }
+
+        merged = app.merge_conditions(existing, incoming)
+        values = {(item["name"], item["operator"], item["value"]) for item in merged}
+        self.assertNotIn(("xcat1", "eq", "美容护肤/美体/精油"), values)
+        self.assertIn(("xcat2", "neq", "面部护理套装"), values)
+        self.assertIn(("xcat1", "eq", "女装/女士精品"), values)
+        self.assertIn(("price", "lte", 800), values)
 
     def test_multiple_selected_categories_use_or_semantics_and_are_interleaved(self):
         conditions = [
