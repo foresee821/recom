@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f6f6f6" />
     <title>你说了算 · 淘宝即时意图 Demo</title>
-    <link rel="stylesheet" href="styles.css?v=20260722-category-selector-v1" />
+    <link rel="stylesheet" href="styles.css?v=20260723-home-icons-v2" />
   </head>
   <body>
     <main class="stage">
@@ -43,7 +43,9 @@
                 <button class="brand-dot" id="home-logo" aria-label="回到推荐页"><span></span></button>
                 <button class="search-box" id="search-entry" type="button" disabled aria-disabled="true">
                   <span id="search-label">搬家</span>
-                  <i class="camera-icon" aria-hidden="true"></i>
+                  <span class="camera-icon" aria-hidden="true">
+                    <svg viewBox="0 0 34 30"><path d="M10 7.5 12.2 4h9.6L24 7.5h3.8A4.2 4.2 0 0 1 32 11.7v11.1a4.2 4.2 0 0 1-4.2 4.2H6.2A4.2 4.2 0 0 1 2 22.8V11.7a4.2 4.2 0 0 1 4.2-4.2z"/><circle cx="17" cy="17.3" r="6"/><path d="M27 12h.1"/></svg>
+                  </span>
                   <em>搜索</em>
                 </button>
               </div>
@@ -56,9 +58,9 @@
             <div class="content-scroller" id="content-scroller">
               <section class="recommend-view" id="recommend-view">
                 <nav class="channel-grid" aria-label="频道">
-                  <button><span class="icon-farm"><i>巨额</i><svg viewBox="0 0 48 42" aria-hidden="true"><path d="M8 35h32M12 35V20l10-8 10 8v15M29 12c0-5 4-9 9-9 1 6-2 10-9 11M18 23h8v12h-8z"/></svg></span><b>芭芭农场</b></button>
-                  <button><span class="icon-hema"><svg viewBox="0 0 48 42" aria-hidden="true"><path d="M13 17 9 7l10 7m16 3 4-10-10 7M12 23c0-7 6-12 12-12s12 5 12 12-5 13-12 13-12-6-12-13Z"/><path d="M19 25c3 2 7 2 10 0"/></svg><small>30分钟</small></span><b>盒马</b></button>
-                  <button><span class="icon-sign"><i>现金</i><svg viewBox="0 0 48 42" aria-hidden="true"><path d="M9 13h30v22H9zM9 20h30M19 8h10v5M18 25h12M20 29h8M24 22v11"/></svg></span><b>红包签到</b></button>
+                  <button><span class="icon-farm"><i>免费</i><svg viewBox="0 0 52 46" aria-hidden="true"><path class="farm-tree" d="M10 36c-6 0-8-7-4-11-3-5 1-11 7-10 1-7 11-9 15-4 5-3 11 2 9 8 6 1 7 10 2 13-1 4-5 5-9 4z"/><path class="farm-trunk" d="M19 25h7v16h-7z"/><path class="farm-house" d="m29 29 8-7 8 7v12H29z"/><path class="farm-door" d="M35 33h5v8h-5z"/></svg></span><b>芭芭农场</b></button>
+                  <button><span class="icon-hema"><svg viewBox="0 0 52 46" aria-hidden="true"><path class="hema-body" d="M9 27c0-8 5-14 12-16l-2-8 8 7 7-7-1 9c6 3 10 8 10 15 0 10-8 17-17 17S9 37 9 27Z"/><path class="hema-face" d="M19 21c4-2 10-2 14 0M20 27h.1M32 27h.1M22 33c2 2 6 2 8 0"/></svg><small>30分钟</small></span><b>盒马</b></button>
+                  <button><span class="icon-sign"><i>免费</i><svg viewBox="0 0 52 46" aria-hidden="true"><rect class="sign-packet" x="8" y="6" width="36" height="37" rx="7"/><path class="sign-fold" d="M10 16h32L26 25 10 16Z"/><path class="sign-yuan" d="m21 25 5 5 5-5M26 30v8M21 33h10"/></svg></span><b>红包签到</b></button>
                   <button><span class="icon-category"><svg viewBox="0 0 48 42" aria-hidden="true"><path d="M14 13h20M14 21h20M14 29h20"/></svg></span><b>分类</b></button>
                   <button><span class="icon-channels"><i>😎</i><i>🛍</i><i>🤫</i><i>•••</i></span><b>全部频道</b></button>
                 </nav>
@@ -214,6 +216,6 @@
       </section>
     </main>
     <div class="toast" id="toast" hidden></div>
-    <script src="app.js?v=20260722-category-selector-v1"></script>
+    <script src="app.js?v=20260723-home-icons-v2"></script>
   </body>
 </html>
