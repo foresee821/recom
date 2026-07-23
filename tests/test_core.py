@@ -340,6 +340,12 @@ class RealCatalogTests(unittest.TestCase):
         self.assertIn("state.recommendationIds = [...result.resultIds]", frontend)
         self.assertIn("if (state.activePresetKey) return;", frontend)
 
+    def test_static_pages_build_embeds_preset_responses(self):
+        source = (ROOT / "scripts" / "build_sites.py").read_text(encoding="utf-8")
+        self.assertIn("const presetResponses = __PRESET_RESPONSES__;", source)
+        self.assertIn("normalizedPresetResponses.get(normalize(payload.transcript))", source)
+        self.assertIn('os.environ["INTENT_ENGINE"] = "rules"', source)
+
     def test_secondary_category_returns_real_ranked_products(self):
         for transcript, expected in (("我想看项链", "项链"), ("我想看连衣裙", "连衣裙")):
             with self.subTest(transcript=transcript):

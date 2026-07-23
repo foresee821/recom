@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -35,6 +36,7 @@ STATIC_ENGINE = r"""
 (function () {
   const bootstrap = __BOOTSTRAP__;
   const precomputed = __INTENTS__;
+  const presetResponses = __PRESET_RESPONSES__;
   const products = new Map(bootstrap.products.map((item) => [item.id, item]));
   const groupPrefixes = {
     rental: "rental-",
@@ -69,6 +71,9 @@ STATIC_ENGINE = r"""
 
   const normalizedIntents = new Map(
     Object.entries(precomputed).map(([phrase, intent]) => [normalize(phrase), intent])
+  );
+  const normalizedPresetResponses = new Map(
+    Object.entries(presetResponses).map(([phrase, response]) => [normalize(phrase), response])
   );
 
   function clone(value) {
@@ -239,6 +244,8 @@ STATIC_ENGINE = r"""
     }
     if (path === "/api/intent/apply") {
       const payload = JSON.parse(options.body || "{}");
+      const presetResponse = normalizedPresetResponses.get(normalize(payload.transcript));
+      if (presetResponse) return clone(presetResponse);
       const intent = inferIntent(payload.transcript);
       const sessionIntent = mergeConditions(payload.sessionIntent || [], intent);
       const resultIds = rank(sessionIntent, intent);
@@ -304,13 +311,21 @@ def build() -> None:
     SERVER.mkdir(parents=True, exist_ok=True)
 
     bootstrap = app.bootstrap_payload()
+    os.environ["INTENT_ENGINE"] = "rules"
     intents = {phrase: app.parse_intent(phrase) for phrase in sorted(PRECOMPUTED_PHRASES)}
+    preset_responses = {
+        preset["prompt"]: app.preset_scenario_response(preset["prompt"])
+        for preset in app.SCENARIO_PRESETS
+    }
     engine = STATIC_ENGINE.replace(
         "__BOOTSTRAP__",
         json.dumps(bootstrap, ensure_ascii=False, separators=(",", ":")),
     ).replace(
         "__INTENTS__",
         json.dumps(intents, ensure_ascii=False, separators=(",", ":")),
+    ).replace(
+        "__PRESET_RESPONSES__",
+        json.dumps(preset_responses, ensure_ascii=False, separators=(",", ":")),
     )
     (CLIENT / "demo-static.js").write_text(engine, encoding="utf-8")
 
