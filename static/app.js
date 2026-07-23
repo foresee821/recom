@@ -61,6 +61,10 @@ const state = {
   categoryCatalogIndex: null,
   categoryCatalogShardCache: new Map(),
   activeIntentProductIds: [],
+  lastSelectionFallback: false,
+  searchWatermarkIndex: 0,
+  searchWatermarkTimer: null,
+  searchWatermarkChangeTimer: null,
 };
 
 const productSpritePanels = {
@@ -674,6 +678,7 @@ async function clearAllIntents() {
   state.nearIds = [];
   state.previous = null;
   state.activeIntentProductIds = [];
+  state.lastSelectionFallback = false;
   renderIntents();
   renderProducts();
   renderVoiceKeywords();
@@ -694,11 +699,73 @@ function snapshot() {
   };
 }
 
+function compactWatermark(value) {
+  return String(value || "")
+    .split(/[\/／]/)[0]
+    .replace(/[（）()]/g, "")
+    .trim()
+    .slice(0, 12);
+}
+
+function searchWatermarkCandidates() {
+  if (!state.bootstrap) return [];
+  if (state.scene === "search") return [state.bootstrap.searchQuery];
+
+  const intentWords = state.sessionIntent
+    .filter((condition) => !condition.hidden && condition.operator === "eq")
+    .filter((condition) => ["category", "xcat1", "xcat2"].includes(condition.name))
+    .map((condition) => compactWatermark(condition.value))
+    .filter(Boolean)
+    .map((value) => `想看${value}`);
+
+  const productWords = (state.lastSelectionFallback ? [] : state.recommendationIds)
+    .slice(0, 20)
+    .map((id) => state.products.get(id))
+    .filter(Boolean)
+    .map((item) => compactWatermark(item.xcat2 || item.category))
+    .filter((value) => value.length >= 2)
+    .map((value) => `${value}热卖`)
+    .slice(0, 4);
+
+  return [...new Set([
+    ...intentWords,
+    ...productWords,
+    ...(state.bootstrap.searchWatermarks || []),
+  ])].filter((value) => value && value.length <= 16);
+}
+
+function renderNextSearchWatermark(immediate = false) {
+  const candidates = searchWatermarkCandidates();
+  if (!candidates.length) return;
+  const next = candidates[state.searchWatermarkIndex % candidates.length];
+  state.searchWatermarkIndex = (state.searchWatermarkIndex + 1) % candidates.length;
+  clearTimeout(state.searchWatermarkChangeTimer);
+  if (immediate) {
+    els.searchLabel.classList.remove("is-changing");
+    els.searchLabel.textContent = next;
+    return;
+  }
+  els.searchLabel.classList.add("is-changing");
+  state.searchWatermarkChangeTimer = setTimeout(() => {
+    els.searchLabel.textContent = next;
+    els.searchLabel.classList.remove("is-changing");
+  }, 150);
+}
+
+function restartSearchWatermarks() {
+  clearInterval(state.searchWatermarkTimer);
+  state.searchWatermarkIndex = 0;
+  renderNextSearchWatermark(true);
+  if (state.scene === "recommend") {
+    state.searchWatermarkTimer = setInterval(() => renderNextSearchWatermark(), 3000);
+  }
+}
+
 function switchScene(scene) {
   state.scene = scene;
   els.recommendView.hidden = scene !== "recommend";
   els.searchView.hidden = scene !== "search";
-  els.searchLabel.textContent = scene === "search" ? state.bootstrap.searchQuery : "绝美白色短袖 t 恤";
+  restartSearchWatermarks();
   document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === scene));
   els.scroller.scrollTop = 0;
   renderExamples();
@@ -916,6 +983,7 @@ async function applyTranscript(transcript) {
     applyCategoryCatalogFallback(result, categoryCatalog);
     const intentCatalogIds = await intentCatalogProductIds(transcript, result.sessionIntent || []);
     applyIntentCatalogFallback(result, intentCatalogIds);
+    state.lastSelectionFallback = Boolean(result.intent.selectionFallback);
     if (!applyHomeCatalogIntentFallback(result, transcript)) {
       els.transcript.textContent = result.feedback;
       return;
@@ -1077,6 +1145,7 @@ async function init() {
     renderIntents();
     renderExamples();
     bindEvents();
+    restartSearchWatermarks();
     const loadCatalogAfterFirstPaint = () => {
       setTimeout(() => {
         loadHomepageCatalog().catch((error) => {

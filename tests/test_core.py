@@ -57,6 +57,23 @@ class CategorySelectorTests(unittest.TestCase):
         self.assertIn('{"category_id":"编号"}', prompt)
         self.assertNotIn('"mode":"product|scenario|explore|unknown"', prompt)
 
+    def test_low_category_scores_trigger_hidden_fallback_instead_of_visible_selection(self):
+        candidates = app.category_selection_candidates("今天随便看看")
+        low_scores = {group_id: 1 for group_id, _, _ in app.CATEGORY_GROUPS}
+
+        with patch.object(app, "call_category_selector", return_value=low_scores) as selector:
+            selected = app.select_category_ids_with_api(
+                "今天随便看看",
+                candidates,
+                api_key="test-key",
+                model="test-model",
+                timeout=20,
+                base_url="",
+            )
+
+        self.assertEqual(selected, [])
+        self.assertEqual(selector.call_count, 1)
+
     def test_model_output_is_resolved_by_id_and_generated_names_are_ignored(self):
         candidates = [
             {"id": "c001", "level": "xcat2", "name": "无线耳机", "parent": "影音电器"},
@@ -175,6 +192,10 @@ class CategorySelectorTests(unittest.TestCase):
             [(item["name"], item["value"], item.get("hidden", False)) for item in merged],
             [("price", 800, False), ("xcat1", "新随机类目", True)],
         )
+        self.assertEqual(
+            app.visible_session_conditions(merged),
+            [app.slot("price", "lte", 800, "hard", "≤¥800")],
+        )
 
     def test_negative_category_retracts_related_positive_condition(self):
         existing = [
@@ -247,6 +268,15 @@ class RealCatalogTests(unittest.TestCase):
         payload = app.bootstrap_payload()
         self.assertEqual(payload["products"], [])
         self.assertEqual(payload["initialRecommendations"], [])
+        self.assertGreaterEqual(len(payload["searchWatermarks"]), 4)
+        self.assertEqual(len(payload["searchWatermarks"]), len(set(payload["searchWatermarks"])))
+
+    def test_frontend_rotates_dynamic_search_watermarks(self):
+        source = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("function searchWatermarkCandidates()", source)
+        self.assertIn("setInterval(() => renderNextSearchWatermark(), 3000)", source)
+        self.assertIn("!condition.hidden && condition.operator === \"eq\"", source)
+        self.assertIn("state.lastSelectionFallback ? [] : state.recommendationIds", source)
 
     def test_secondary_category_returns_real_ranked_products(self):
         for transcript, expected in (("我想看项链", "项链"), ("我想看连衣裙", "连衣裙")):

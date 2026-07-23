@@ -61,7 +61,8 @@ button { border: 0; cursor: pointer; }
 .brand-dot span::after { right:7px; bottom:5px; border-width:0 2px 2px 0; border-radius:0 0 5px; }
 .search-box { width:0; min-width:0; flex:1 1 0; height:35px; display:flex; align-items:center; overflow:hidden; padding:0 112px 0 10px; background:#fff; color:#777; text-align:left; }
 .search-box:disabled { opacity:1; cursor:default; }
-.search-box #search-label { min-width:0; flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:#27212b; font-size:13px; font-weight:650; }
+.search-box #search-label { min-width:0; flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:#27212b; font-size:13px; font-weight:650; opacity:1; transform:translateY(0); transition:opacity .15s ease,transform .15s ease; }
+.search-box #search-label.is-changing { opacity:0; transform:translateY(-4px); }
 .camera-icon { position:absolute; z-index:2; top:5px; right:75px; display:grid; width:31px; height:28px; place-items:center; color:#929eae; }
 .camera-icon svg { width:31px; height:28px; overflow:visible; fill:none; stroke:currentColor; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; }
 .search-box em { position:absolute; top:2px; right:2px; display:grid; width:66px; height:35px; place-items:center; border-radius:11px; background:linear-gradient(90deg,#ff6b10,var(--orange)); color:#fff; font-size:16px; font-style:normal; font-weight:750; }

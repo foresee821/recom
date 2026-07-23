@@ -1789,8 +1789,6 @@ def select_category_ids_with_api(
     strongest = [item for item in scored_groups if item[0] == 3][:4]
     if not strongest:
         strongest = [item for item in scored_groups if item[0] >= 2][:2]
-    if not strongest and scored_groups:
-        strongest = scored_groups[:1]
 
     group_candidates: list[tuple[str, list[dict[str, str]]]] = []
     for _, group_id in strongest:
@@ -1998,6 +1996,11 @@ def merge_conditions(existing: list[dict[str, Any]], intent: dict[str, Any]) -> 
         ]
         merged.append(dict(incoming))
     return merged
+
+
+def visible_session_conditions(conditions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Only user-backed conditions are allowed to reach visible client state."""
+    return [dict(item) for item in conditions if not item.get("hidden")]
 
 
 def product_contains_value(product_item: dict[str, Any], value: Any) -> bool:
@@ -2420,6 +2423,14 @@ def bootstrap_payload() -> dict[str, Any]:
         "initialRecommendations": INITIAL_RECOMMENDATIONS,
         "initialSearchResults": INITIAL_SEARCH_RESULTS,
         "searchQuery": "男生白色运动鞋",
+        "searchWatermarks": [
+            "骑行防晒面罩",
+            "夏季通勤穿搭",
+            "搬家收纳好物",
+            "500元以内蓝牙耳机",
+            "敏感肌防晒",
+            "周末露营装备",
+        ],
         "examples": {
             "recommend": [
                 "给我推荐点健身好物",
@@ -2522,7 +2533,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
                 self.send_json({
                     "intent": intent,
                     "engine": engine,
-                    "sessionIntent": conditions,
+                    "sessionIntent": visible_session_conditions(conditions),
                     "resultIds": ranked["exact"],
                     "nearMatchIds": ranked["near"],
                     "products": products_for_ranked_results(ranked),
