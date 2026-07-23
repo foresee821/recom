@@ -138,6 +138,10 @@ const caseSpriteSources = {
 const hiddenHomepageProductIds = new Set([
   "item-158364675",
 ]);
+const firstRoundHomepageReplacement = {
+  removeId: "item-543626745567",
+  replacementId: "item-571346532690",
+};
 
 function caseSpriteFor(productId) {
   const match = /^(rental|concert|happy|sunscreen|dressbase|dresskorean|dresscase|fitcase|wow)-(\d{2})$/.exec(productId);
@@ -292,6 +296,17 @@ function homepageProductsForRound(products, round) {
   const interleaved = [];
   for (let index = 0; groups.some((items) => index < items.length); index += 1) {
     for (const items of groups) if (items[index]) interleaved.push(items[index]);
+  }
+  if (round === 0) {
+    const removeIndex = interleaved.findIndex((item) => item.id === firstRoundHomepageReplacement.removeId);
+    const replacement = products.find((item) => item.id === firstRoundHomepageReplacement.replacementId);
+    if (removeIndex >= 0 && replacement) {
+      return [
+        ...interleaved.slice(0, removeIndex).filter((item) => item.id !== replacement.id),
+        replacement,
+        ...interleaved.slice(removeIndex + 1).filter((item) => item.id !== replacement.id),
+      ];
+    }
   }
   return interleaved;
 }
