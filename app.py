@@ -1519,6 +1519,7 @@ def prompt_allowed_categories() -> tuple[str, ...]:
 
 ALLOWED_INTENT_CATEGORIES = prompt_allowed_categories()
 ALLOWED_INTENT_CATEGORY_SET = frozenset(ALLOWED_INTENT_CATEGORIES)
+MAX_INTENT_CATEGORIES = 8
 
 
 def api_category_candidates() -> list[dict[str, str]]:
@@ -1994,7 +1995,7 @@ def select_category_ids_with_api(
         if item["level"] == "xcat2"
     }
     selected_ids: list[str] = []
-    for value in categories[:12]:
+    for value in categories:
         if not isinstance(value, str):
             continue
         name = value.strip()
@@ -2003,6 +2004,8 @@ def select_category_ids_with_api(
         candidate_id = candidate_id_by_name.get(name)
         if candidate_id and candidate_id not in selected_ids:
             selected_ids.append(candidate_id)
+        if len(selected_ids) >= MAX_INTENT_CATEGORIES:
+            break
     return selected_ids
 
 

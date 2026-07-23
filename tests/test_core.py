@@ -77,6 +77,13 @@ class CategorySelectorTests(unittest.TestCase):
             {"role": "user", "content": transcript},
         ])
 
+    def test_prompt_requires_diverse_broad_scenes_and_at_most_eight_categories(self):
+        prompt = app.intent_system_prompt()
+        self.assertIn("宽泛场景时，输出 4～8 个互补品类", prompt)
+        self.assertIn("不要被单一方向占满", prompt)
+        self.assertIn("总数绝对不能超过 8 个", prompt)
+        self.assertIn("输入：\n我要去留学", prompt)
+
     def test_selector_only_accepts_allowlisted_real_category_names(self):
         candidates = app.api_category_candidates()
         with patch.object(app, "call_category_selector", return_value={
@@ -96,6 +103,25 @@ class CategorySelectorTests(unittest.TestCase):
         }
         self.assertEqual(selected_names, {"双肩背包"})
         self.assertEqual(selector.call_count, 1)
+
+    def test_selector_caps_model_output_at_eight_categories(self):
+        candidates = app.api_category_candidates()
+        category_names = [
+            item["name"] for item in candidates if item["level"] == "xcat2"
+        ][:12]
+        with patch.object(app, "call_category_selector", return_value={
+            "categories": category_names,
+        }):
+            selected = app.select_category_ids_with_api(
+                "我要去留学",
+                candidates,
+                api_key="test-key",
+                model="test-model",
+                timeout=20,
+                base_url="",
+            )
+
+        self.assertEqual(len(selected), app.MAX_INTENT_CATEGORIES)
 
     def test_model_output_is_resolved_by_id_and_generated_names_are_ignored(self):
         candidates = [
