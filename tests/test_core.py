@@ -523,6 +523,8 @@ class RealCatalogTests(unittest.TestCase):
         self.assertIn('{ id: "item-594188372494", insertIndex: 4 }', source)
         self.assertIn('{ id: "item-1016585476064", insertIndex: 5 }', source)
         self.assertIn("if (round === 0)", source)
+        index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("app.js?v=20260723-homepage-pins-v6", index)
 
     def test_frontend_loads_catalog_by_category_shard(self):
         source = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
