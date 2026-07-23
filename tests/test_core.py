@@ -520,6 +520,7 @@ class RealCatalogTests(unittest.TestCase):
         source = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn('removeId: "item-543626745567"', source)
         self.assertIn('replacementId: "item-571346532690"', source)
+        self.assertIn("insertIndex: 2", source)
         self.assertIn("if (round === 0)", source)
 
     def test_frontend_loads_catalog_by_category_shard(self):

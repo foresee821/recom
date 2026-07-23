@@ -141,6 +141,7 @@ const hiddenHomepageProductIds = new Set([
 const firstRoundHomepageReplacement = {
   removeId: "item-543626745567",
   replacementId: "item-571346532690",
+  insertIndex: 2,
 };
 
 function caseSpriteFor(productId) {
@@ -298,13 +299,16 @@ function homepageProductsForRound(products, round) {
     for (const items of groups) if (items[index]) interleaved.push(items[index]);
   }
   if (round === 0) {
-    const removeIndex = interleaved.findIndex((item) => item.id === firstRoundHomepageReplacement.removeId);
     const replacement = products.find((item) => item.id === firstRoundHomepageReplacement.replacementId);
-    if (removeIndex >= 0 && replacement) {
+    if (replacement) {
+      const withoutReplacedItems = interleaved.filter((item) =>
+        ![firstRoundHomepageReplacement.removeId, replacement.id].includes(item.id),
+      );
+      const insertIndex = Math.min(firstRoundHomepageReplacement.insertIndex, withoutReplacedItems.length);
       return [
-        ...interleaved.slice(0, removeIndex).filter((item) => item.id !== replacement.id),
+        ...withoutReplacedItems.slice(0, insertIndex),
         replacement,
-        ...interleaved.slice(removeIndex + 1).filter((item) => item.id !== replacement.id),
+        ...withoutReplacedItems.slice(insertIndex),
       ];
     }
   }
