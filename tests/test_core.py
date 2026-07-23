@@ -346,6 +346,19 @@ class RealCatalogTests(unittest.TestCase):
 
         self.assertIsNone(app.preset_scenario_response("我想看看护肤品"))
 
+    def test_visible_recommend_examples_do_not_expose_preset_prompts(self):
+        visible_examples = app.bootstrap_payload()["examples"]["recommend"]
+        self.assertEqual(visible_examples, [
+            "最近想换换穿衣风格。",
+            "有没有适合夏天穿的？",
+            "今天想看点不一样的。",
+            "有没有适合周末的新玩法？",
+            "最近想开始健身。",
+            "下个月去意大利，有什么需要准备的吗？",
+        ])
+        preset_prompts = {preset["prompt"] for preset in app.SCENARIO_PRESETS}
+        self.assertTrue(preset_prompts.isdisjoint(visible_examples))
+
     def test_preset_route_precedes_model_intent_parsing(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         handler = source[source.index("    def do_POST(self) -> None:"):]
