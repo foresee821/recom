@@ -74,6 +74,26 @@ class CategorySelectorTests(unittest.TestCase):
         self.assertEqual(selected, [])
         self.assertEqual(selector.call_count, 1)
 
+    def test_ambiguous_high_category_scores_also_trigger_hidden_fallback(self):
+        candidates = app.category_selection_candidates("今天心情还行")
+        ambiguous_scores = {
+            group_id: 3 if index < 4 else 0
+            for index, (group_id, _, _) in enumerate(app.CATEGORY_GROUPS)
+        }
+
+        with patch.object(app, "call_category_selector", return_value=ambiguous_scores) as selector:
+            selected = app.select_category_ids_with_api(
+                "今天心情还行",
+                candidates,
+                api_key="test-key",
+                model="test-model",
+                timeout=20,
+                base_url="",
+            )
+
+        self.assertEqual(selected, [])
+        self.assertEqual(selector.call_count, 1)
+
     def test_model_output_is_resolved_by_id_and_generated_names_are_ignored(self):
         candidates = [
             {"id": "c001", "level": "xcat2", "name": "无线耳机", "parent": "影音电器"},

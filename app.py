@@ -1784,11 +1784,11 @@ def select_category_ids_with_api(
             score = max(0, min(3, int(value)))
         except (TypeError, ValueError):
             continue
-        scored_groups.append((score, group_id))
+    scored_groups.append((score, group_id))
     scored_groups.sort(key=lambda item: (-item[0], item[1]))
     strongest = [item for item in scored_groups if item[0] == 3][:4]
-    if not strongest:
-        strongest = [item for item in scored_groups if item[0] >= 2][:2]
+    if not 1 <= len(strongest) <= 2:
+        return []
 
     group_candidates: list[tuple[str, list[dict[str, str]]]] = []
     for _, group_id in strongest:
@@ -1910,8 +1910,12 @@ def parse_intent_with_api(transcript: str) -> dict[str, Any]:
     rule_intent = parse_intent_with_rules(transcript)
     delta_slots = category_delta_slots(rule_intent)
     has_explicit_removal = any(item["operator"] == "neq" for item in delta_slots)
+    has_guardrailed_category = any(
+        item["query"] in CATEGORY_DELTA_TAXONOMY_HINTS
+        for item in delta_slots
+    )
     try:
-        if has_explicit_removal:
+        if has_explicit_removal or has_guardrailed_category:
             candidates, raw = select_category_delta_with_api(
                 delta_slots,
                 api_key=api_key,
