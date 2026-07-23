@@ -2489,6 +2489,7 @@ def bootstrap_payload() -> dict[str, Any]:
         "initialSearchResults": INITIAL_SEARCH_RESULTS,
         "searchQuery": "男生白色运动鞋",
         "searchWatermarks": [
+            "夏日上衣",
             "骑行防晒面罩",
             "夏季通勤穿搭",
             "搬家收纳好物",

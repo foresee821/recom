@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f6f6f6" />
     <title>你说了算 · 淘宝即时意图 Demo</title>
-    <link rel="stylesheet" href="styles.css?v=20260723-home-icons-v2" />
+    <link rel="stylesheet" href="styles.css?v=20260723-home-refresh-v3" />
   </head>
   <body>
     <main class="stage">
@@ -29,20 +29,20 @@
           <div class="dynamic-island" aria-hidden="true"></div>
           <div class="mobile-screen" id="mobile-screen">
             <header class="app-header">
-              <div class="status-row"><span>10:34</span><span class="phone-status"><i>▮▮▮▮</i><em>5G</em><b>96</b></span></div>
+              <div class="status-row"><span>17:59</span><span class="phone-status"><i>▮▮▮▮</i><em>⌁</em><b>58</b></span></div>
               <nav class="top-channels" aria-label="首页频道">
                 <button>关注</button>
                 <button class="active">推荐</button>
                 <button>闪购 <em>外卖</em></button>
                 <button>国补</button>
+                <button>超级立减</button>
                 <button>飞猪</button>
-                <button>省钱周</button>
                 <button>穿搭</button>
               </nav>
               <div class="search-row">
                 <button class="brand-dot" id="home-logo" aria-label="回到推荐页"><span></span></button>
                 <button class="search-box" id="search-entry" type="button" disabled aria-disabled="true">
-                  <span id="search-label">搬家</span>
+                  <span id="search-label">夏日上衣</span>
                   <span class="camera-icon" aria-hidden="true">
                     <svg viewBox="0 0 34 30"><path d="M10 7.5 12.2 4h9.6L24 7.5h3.8A4.2 4.2 0 0 1 32 11.7v11.1a4.2 4.2 0 0 1-4.2 4.2H6.2A4.2 4.2 0 0 1 2 22.8V11.7a4.2 4.2 0 0 1 4.2-4.2z"/><circle cx="17" cy="17.3" r="6"/><path d="M27 12h.1"/></svg>
                   </span>
@@ -58,41 +58,30 @@
             <div class="content-scroller" id="content-scroller">
               <section class="recommend-view" id="recommend-view">
                 <nav class="channel-grid" aria-label="频道">
-                  <button><span class="icon-farm"><i>免费</i><svg viewBox="0 0 52 46" aria-hidden="true"><path class="farm-tree" d="M10 36c-6 0-8-7-4-11-3-5 1-11 7-10 1-7 11-9 15-4 5-3 11 2 9 8 6 1 7 10 2 13-1 4-5 5-9 4z"/><path class="farm-trunk" d="M19 25h7v16h-7z"/><path class="farm-house" d="m29 29 8-7 8 7v12H29z"/><path class="farm-door" d="M35 33h5v8h-5z"/></svg></span><b>芭芭农场</b></button>
-                  <button><span class="icon-hema"><svg viewBox="0 0 52 46" aria-hidden="true"><path class="hema-body" d="M9 27c0-8 5-14 12-16l-2-8 8 7 7-7-1 9c6 3 10 8 10 15 0 10-8 17-17 17S9 37 9 27Z"/><path class="hema-face" d="M19 21c4-2 10-2 14 0M20 27h.1M32 27h.1M22 33c2 2 6 2 8 0"/></svg><small>30分钟</small></span><b>盒马</b></button>
-                  <button><span class="icon-sign"><i>免费</i><svg viewBox="0 0 52 46" aria-hidden="true"><rect class="sign-packet" x="8" y="6" width="36" height="37" rx="7"/><path class="sign-fold" d="M10 16h32L26 25 10 16Z"/><path class="sign-yuan" d="m21 25 5 5 5-5M26 30v8M21 33h10"/></svg></span><b>红包签到</b></button>
-                  <button><span class="icon-category"><svg viewBox="0 0 48 42" aria-hidden="true"><path d="M14 13h20M14 21h20M14 29h20"/></svg></span><b>分类</b></button>
-                  <button><span class="icon-channels"><i>😎</i><i>🛍</i><i>🤫</i><i>•••</i></span><b>全部频道</b></button>
+                  <button><span class="icon-factory"><svg viewBox="0 0 52 48" aria-hidden="true"><path class="factory-body" d="M8 11h36v32H8z"/><path class="factory-notch" d="M8 11h11v8h14v-8h11"/><path class="factory-smile" d="M19 31c4 4 10 4 14 0"/></svg></span><b>淘工厂</b></button>
+                  <button><span class="icon-sign"><svg viewBox="0 0 52 46" aria-hidden="true"><rect class="sign-packet" x="8" y="6" width="36" height="37" rx="7"/><path class="sign-fold" d="M10 16h32L26 25 10 16Z"/><path class="sign-yuan" d="m21 25 5 5 5-5M26 30v8M21 33h10"/></svg></span><b>红包签到</b></button>
+                  <button><span class="icon-coins"><svg viewBox="0 0 52 48" aria-hidden="true"><circle class="coin-edge" cx="26" cy="24" r="20"/><circle class="coin-core" cx="26" cy="24" r="14"/><path class="coin-mark" d="m20 17 6 6 6-6M26 23v12M19 28h14"/></svg></span><b>领淘金币</b></button>
+                  <button><span class="icon-farm"><svg viewBox="0 0 52 46" aria-hidden="true"><path class="farm-tree" d="M10 36c-6 0-8-7-4-11-3-5 1-11 7-10 1-7 11-9 15-4 5-3 11 2 9 8 6 1 7 10 2 13-1 4-5 5-9 4z"/><path class="farm-trunk" d="M19 25h7v16h-7z"/><path class="farm-house" d="m29 29 8-7 8 7v12H29z"/><path class="farm-door" d="M35 33h5v8h-5z"/></svg></span><b>芭芭农场</b></button>
+                  <button><span class="icon-cainiao"><svg viewBox="0 0 52 48" aria-hidden="true"><rect class="station-body" x="8" y="9" width="36" height="34" rx="7"/><path class="station-roof" d="M8 20h36"/><path class="station-window" d="M15 13h16v6H15z"/><path class="station-box" d="M18 27h17v15H18z"/><path class="station-line" d="M38 27h4"/></svg></span><b>菜鸟驿站</b></button>
+                  <button><span class="icon-activity"><svg viewBox="0 0 52 48" aria-hidden="true"><circle cx="26" cy="24" r="22"/><path d="M19 13h14v22H19zM23 17h6M23 22h6M23 27h6"/></svg></span><b>活动</b></button>
                 </nav>
+                <div class="channel-pager" aria-hidden="true"><i></i><i></i></div>
 
                 <section class="operation-grid" aria-label="淘宝活动">
-                  <article class="operation-card subsidy-card">
-                    <header><strong>百亿补贴</strong></header>
-                    <div class="op-photo op-photo-jar"></div>
-                    <p><b>补6元</b></p>
+                  <article class="operation-card live-card">
+                    <header><strong>淘宝直播</strong><span>▮▮</span></header>
+                    <div class="op-photo op-photo-live"><i>春日部 江一卓</i><b>♥</b></div>
                   </article>
-                  <article class="operation-card national-card">
-                    <header><strong>国家补贴</strong></header>
-                    <div class="op-photo op-photo-shoes"></div>
-                    <p><b>补上加补</b></p>
+                  <article class="operation-card subsidy-card">
+                    <header><strong>百亿补贴</strong><span>领国补</span></header>
+                    <div class="op-photo op-photo-subsidy"></div>
+                    <p><b>¥52</b><em>⚡补贴价</em></p>
                   </article>
                   <article class="operation-card flash-card">
-                    <header><strong>淘宝秒杀</strong></header>
-                    <div class="op-photo op-photo-jewel"></div>
-                    <p><b>秒杀价 ¥7.2</b></p>
+                    <header><strong>淘宝秒杀</strong><span>省钱周</span></header>
+                    <div class="op-photo op-photo-dumbbells"><i></i><i></i></div>
+                    <p><b>¥10.82</b><em>↙秒杀价</em></p>
                   </article>
-                  <article class="operation-card flash-card beauty-card">
-                    <header><strong><span class="countdown">09:25:22</span></strong></header>
-                    <div class="op-photo op-photo-beauty"></div>
-                    <p><b>秒杀价 ¥19.7</b></p>
-                  </article>
-                </section>
-
-                <section class="super-deal" aria-label="超级立减">
-                  <strong><span>◖</span> 超级立减</strong>
-                  <p>夏日嗨吃节低至 8.1折</p>
-                  <b>¥10</b>
-                  <em>立即领取</em>
                 </section>
 
                 <p id="recommend-subtitle" hidden></p>
@@ -146,7 +135,7 @@
                     <path d="M4 7.5A4.5 4.5 0 0 1 8.5 3h11A4.5 4.5 0 0 1 24 7.5v8a4.5 4.5 0 0 1-4.5 4.5H13l-5.5 4v-4A4.5 4.5 0 0 1 4 15.5z"></path>
                     <path class="nav-dots" d="M9 11.8h.1M14 11.8h.1M19 11.8h.1"></path>
                   </svg>
-                  <i>1</i>
+                  <i>42</i>
                 </span>
                 <b>消息</b>
               </button>
@@ -216,6 +205,6 @@
       </section>
     </main>
     <div class="toast" id="toast" hidden></div>
-    <script src="app.js?v=20260723-preset-scenarios"></script>
+    <script src="app.js?v=20260723-home-refresh-v3"></script>
   </body>
 </html>
