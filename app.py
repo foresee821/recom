@@ -581,6 +581,119 @@ def slot(name: str, operator: str, value: Any, strength: str, label: str) -> dic
     return {"name": name, "operator": operator, "value": value, "strength": strength, "label": label}
 
 
+def preset_bubble(
+    source_key: str,
+    label: str,
+    *,
+    group: str,
+    operator: str = "eq",
+) -> dict[str, Any]:
+    return {
+        "name": "presetBubble",
+        "operator": operator,
+        "value": source_key,
+        "strength": "soft",
+        "label": label,
+        "sourceKey": source_key,
+        "presetGroup": group,
+        "presetBubble": True,
+    }
+
+
+PRESET_BUBBLE_PLANS: dict[str, dict[str, Any]] = {
+    "scenario-1-q1": {
+        "group": "scenario-1",
+        "reset": True,
+        "removeKeys": [],
+        "add": [
+            preset_bubble("preset-s1-outfit", "+ 穿搭", group="scenario-1"),
+            preset_bubble("preset-s1-skincare", "− 护肤", group="scenario-1", operator="neq"),
+        ],
+    },
+    "scenario-1-q2": {
+        "group": "scenario-1",
+        "reset": False,
+        "removeKeys": ["preset-s1-outfit"],
+        "add": [
+            preset_bubble("preset-s1-commute", "+ 通勤穿搭", group="scenario-1"),
+            preset_bubble("preset-s1-formal", "− 太正式", group="scenario-1", operator="neq"),
+            preset_bubble("preset-s1-ordinary", "− 太普通", group="scenario-1", operator="neq"),
+        ],
+    },
+    "scenario-1-q3": {
+        "group": "scenario-1",
+        "reset": False,
+        "removeKeys": [],
+        "add": [
+            preset_bubble("preset-s1-value", "+ 高性价比", group="scenario-1"),
+            preset_bubble("preset-s1-expensive", "− 高价", group="scenario-1", operator="neq"),
+        ],
+    },
+    "scenario-2-q1": {
+        "group": "scenario-2",
+        "reset": True,
+        "removeKeys": [],
+        "add": [
+            preset_bubble("preset-s2-fresh", "+ 新鲜感", group="scenario-2"),
+            preset_bubble("preset-s2-repeat", "− 重复内容", group="scenario-2", operator="neq"),
+        ],
+    },
+    "scenario-2-q2": {
+        "group": "scenario-2",
+        "reset": False,
+        "removeKeys": ["preset-s2-repeat"],
+        "add": [
+            preset_bubble("preset-s2-trending", "+ 新流行", group="scenario-2"),
+            preset_bubble("preset-s2-hobbies", "+ 兴趣爱好", group="scenario-2"),
+        ],
+    },
+    "scenario-3-q1": {
+        "group": "scenario-3",
+        "reset": True,
+        "removeKeys": [],
+        "add": [
+            preset_bubble("preset-s3-home", "+ 新家布置", group="scenario-3"),
+            preset_bubble("preset-s3-storage", "+ 收纳", group="scenario-3"),
+            preset_bubble("preset-s3-decor", "+ 软装氛围", group="scenario-3"),
+        ],
+    },
+    "scenario-4-q1": {
+        "group": "scenario-4",
+        "reset": True,
+        "removeKeys": [],
+        "add": [
+            preset_bubble("preset-s4-date", "+ 约会准备", group="scenario-4"),
+            preset_bubble("preset-s4-outfit", "+ 见面穿搭", group="scenario-4"),
+            preset_bubble("preset-s4-gift", "+ 心意礼物", group="scenario-4"),
+        ],
+    },
+}
+
+
+def apply_preset_bubble_plan(
+    existing: list[dict[str, Any]],
+    plan: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    group = plan["group"]
+    current = [dict(item) for item in existing if isinstance(item, dict)]
+    continues_group = any(item.get("presetGroup") == group for item in current)
+    if plan["reset"] or not continues_group:
+        removed_labels = [str(item.get("label", "")) for item in current if item.get("label")]
+        current = []
+    else:
+        remove_keys = set(plan["removeKeys"])
+        removed_labels = [
+            str(item.get("label", ""))
+            for item in current
+            if item.get("sourceKey") in remove_keys and item.get("label")
+        ]
+        current = [item for item in current if item.get("sourceKey") not in remove_keys]
+    for condition in plan["add"]:
+        current = [item for item in current if item.get("sourceKey") != condition["sourceKey"]]
+        current.append(dict(condition))
+    return current, removed_labels
+
+
 COMMODITY_INTENTS = [
     ("洗衣液", "洗衣液", ("洗衣凝珠", "洗衣服用的", "洗涤剂", "洗衣液")),
     ("纸巾", "纸巾", ("卫生纸", "厕纸", "卷纸", "抽纸", "纸巾")),
@@ -2477,18 +2590,34 @@ def products_for_ranked_results(ranked: dict[str, list[str]]) -> list[dict[str, 
     ]
 
 
-def preset_scenario_response(transcript: str) -> dict[str, Any] | None:
+def preset_scenario_response(
+    transcript: str,
+    existing: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     preset = preset_scenario_for(transcript)
     if preset is None:
         return None
+    bubble_plan = PRESET_BUBBLE_PLANS[preset["key"]]
+    session_intent, removed_labels = apply_preset_bubble_plan(existing or [], bubble_plan)
     products = preset["products"]
     intent = {
         "type": "preset",
         "polarity": "neutral",
-        "slots": [],
+        "slots": [dict(item) for item in bubble_plan["add"]],
         "scope": "turn",
         "transcript": transcript,
         "presetKey": preset["key"],
+        "presetGroup": bubble_plan["group"],
+        "presetBubbleOps": {
+            "group": bubble_plan["group"],
+            "reset": bubble_plan["reset"],
+            "removeKeys": list(bubble_plan["removeKeys"]),
+            "add": [dict(item) for item in bubble_plan["add"]],
+        },
+        "presetBubbleDelta": {
+            "added": [item["label"] for item in bubble_plan["add"]],
+            "removed": removed_labels,
+        },
         "scenario": preset["scenario"],
         "selectedCategories": [],
         "excludedCategories": [],
@@ -2511,7 +2640,7 @@ def preset_scenario_response(transcript: str) -> dict[str, Any] | None:
             "evidence": intent["evidence"],
             "route": intent["route"],
         },
-        "sessionIntent": [],
+        "sessionIntent": session_intent,
         "resultIds": [item["id"] for item in products],
         "nearMatchIds": [],
         "products": products,
@@ -2624,7 +2753,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
                 existing = payload.get("sessionIntent", [])
                 if not isinstance(existing, list):
                     raise ValueError("sessionIntent 必须是数组")
-                preset_response = preset_scenario_response(transcript)
+                preset_response = preset_scenario_response(transcript, existing)
                 if preset_response is not None:
                     self.send_json(preset_response)
                     return

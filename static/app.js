@@ -684,6 +684,9 @@ function scrollProductsToTop() {
 }
 
 function renderVoiceKeywords() {
+  const previousKeys = new Set(
+    (state.previous?.sessionIntent || []).map((condition) => condition.sourceKey || condition.label),
+  );
   const keywords = state.sessionIntent
     .map((condition, index) => ({ condition, index }))
     .filter((item) => !item.condition.hidden)
@@ -696,9 +699,15 @@ function renderVoiceKeywords() {
   els.voiceKeywordOrbit.innerHTML = keywords
     .map(
       ({ condition, index }, position) => `
-        <span class="voice-keyword-bubble bubble-pos-${position}">
+        <span class="voice-keyword-bubble bubble-pos-${position} ${
+          condition.operator === "neq" ? "bubble-negative" : "bubble-positive"
+        } ${
+          previousKeys.has(condition.sourceKey || condition.label) ? "" : "bubble-new"
+        }">
           <span>${escapeHtml(condition.label)}</span>
-          <button type="button" data-remove-keyword="${index}" aria-label="删除关键词 ${escapeHtml(condition.label)}">×</button>
+          ${condition.presetBubble
+            ? ""
+            : `<button type="button" data-remove-keyword="${index}" aria-label="删除关键词 ${escapeHtml(condition.label)}">×</button>`}
         </span>
       `,
     )

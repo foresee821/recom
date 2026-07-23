@@ -282,12 +282,16 @@ button { border: 0; cursor: pointer; }
 .voice-keyword-orbit { position:absolute; z-index:3; inset:0; pointer-events:none; }
 .voice-keyword-orbit:not(:empty)::before { display:none; }
 .voice-keyword-bubble { position:absolute; display:flex; width:66px; min-height:40px; align-items:center; justify-content:center; padding:7px 9px; border:1px solid rgba(255,178,117,.3); border-radius:50%; background:rgba(255,255,255,.94); box-shadow:0 6px 18px rgba(188,95,54,.11),inset 0 0 14px rgba(255,207,148,.12); color:#784b3e; font-size:8px; font-weight:700; line-height:1.2; text-align:center; pointer-events:auto; animation:bubble-pop 260ms cubic-bezier(.2,.8,.2,1) both; }
+.voice-keyword-bubble.bubble-positive { border-color:rgba(255,154,86,.4); background:rgba(255,249,242,.96); color:#d85f36; }
+.voice-keyword-bubble.bubble-negative { border-color:rgba(165,153,181,.34); background:rgba(251,248,253,.96); color:#766b84; }
+.voice-keyword-bubble.bubble-new { animation:bubble-add .48s cubic-bezier(.18,.86,.24,1.18) both; }
 .voice-keyword-bubble>span { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
 .voice-keyword-bubble button { position:absolute; top:-4px; right:-3px; display:grid; width:16px; height:16px; padding:0; place-items:center; border:1px solid #fff; border-radius:50%; background:#fff0e7; color:#df6c4d; font:700 12px/1 Arial,sans-serif; box-shadow:0 2px 6px rgba(156,77,45,.12); cursor:pointer; }
 .bubble-pos-0 { top:4px; left:4px; }.bubble-pos-1 { top:4px; right:4px; }
 .bubble-pos-2 { top:58px; left:1px; }.bubble-pos-3 { top:58px; right:1px; }
 .bubble-pos-4 { bottom:2px; left:8px; }.bubble-pos-5 { right:8px; bottom:2px; }
 @keyframes bubble-pop { from{opacity:0;scale:.78}to{opacity:1;scale:1} }
+@keyframes bubble-add { 0%{opacity:0;scale:.45;filter:blur(2px)}65%{opacity:1;scale:1.12;filter:none}100%{scale:1} }
 .clear-intents { display:block; margin:-6px auto 8px; padding:5px 11px; border:1px solid rgba(230,112,77,.22); border-radius:14px; background:#fff9f5; color:#cc6d54; font-size:8px; font-weight:700; }
 .clear-intents[hidden] { display:none; }
 .fallback-form { display:flex; height:36px; border:1px solid #f1d9cd; border-radius:18px; overflow:hidden; background:#fff; }

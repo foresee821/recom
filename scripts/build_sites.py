@@ -88,6 +88,23 @@ STATIC_ENGINE = r"""
     return JSON.parse(JSON.stringify(value));
   }
 
+  function applyPresetBubbleOps(existing, ops) {
+    const current = clone(existing || []).filter((item) => item && typeof item === "object");
+    const continuesGroup = current.some((item) => item.presetGroup === ops.group);
+    let next = ops.reset || !continuesGroup ? [] : current;
+    const removeKeys = new Set(ops.removeKeys || []);
+    const removed = next
+      .filter((item) => removeKeys.has(item.sourceKey))
+      .map((item) => item.label)
+      .filter(Boolean);
+    next = next.filter((item) => !removeKeys.has(item.sourceKey));
+    for (const condition of ops.add || []) {
+      next = next.filter((item) => item.sourceKey !== condition.sourceKey);
+      next.push(clone(condition));
+    }
+    return { sessionIntent: next, removed };
+  }
+
   function slot(name, operator, value, strength, label) {
     return { name, operator, value, strength, label };
   }
@@ -253,7 +270,16 @@ STATIC_ENGINE = r"""
     if (path === "/api/intent/apply") {
       const payload = JSON.parse(options.body || "{}");
       const presetResponse = matchPresetResponse(payload.transcript);
-      if (presetResponse) return clone(presetResponse);
+      if (presetResponse) {
+        const response = clone(presetResponse);
+        const applied = applyPresetBubbleOps(
+          payload.sessionIntent || [],
+          response.intent.presetBubbleOps,
+        );
+        response.sessionIntent = applied.sessionIntent;
+        response.intent.presetBubbleDelta.removed = applied.removed;
+        return response;
+      }
       const intent = inferIntent(payload.transcript);
       const sessionIntent = mergeConditions(payload.sessionIntent || [], intent);
       const resultIds = rank(sessionIntent, intent);

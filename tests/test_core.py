@@ -322,11 +322,67 @@ class RealCatalogTests(unittest.TestCase):
             self.assertIsNotNone(response)
             self.assertEqual(response["intent"]["type"], "preset")
             self.assertEqual(response["intent"]["presetKey"], preset["key"])
-            self.assertEqual(response["sessionIntent"], [])
+            self.assertTrue(response["sessionIntent"])
+            self.assertTrue(all(
+                condition.get("presetBubble")
+                for condition in response["sessionIntent"]
+            ))
             self.assertEqual(response["resultIds"], [
                 product["id"] for product in preset["products"]
             ])
             self.assertEqual(response["products"], preset["products"])
+
+    def test_preset_bubbles_accumulate_and_replace_across_continuous_scenes(self):
+        scenario_1_q1 = app.preset_scenario_response(
+            "今天先别推护肤了，想看看穿搭。",
+        )
+        self.assertEqual(
+            [item["label"] for item in scenario_1_q1["sessionIntent"]],
+            ["+ 穿搭", "− 护肤"],
+        )
+        scenario_1_q2 = app.preset_scenario_response(
+            "想看看通勤能穿的，别太正式，也别太普通。",
+            scenario_1_q1["sessionIntent"],
+        )
+        self.assertEqual(
+            [item["label"] for item in scenario_1_q2["sessionIntent"]],
+            ["− 护肤", "+ 通勤穿搭", "− 太正式", "− 太普通"],
+        )
+        self.assertEqual(
+            scenario_1_q2["intent"]["presetBubbleDelta"]["removed"],
+            ["+ 穿搭"],
+        )
+        scenario_1_q3 = app.preset_scenario_response(
+            "这些感觉不错，就是感觉有些贵，多来一点性价比高的。",
+            scenario_1_q2["sessionIntent"],
+        )
+        self.assertEqual(
+            [item["label"] for item in scenario_1_q3["sessionIntent"]],
+            [
+                "− 护肤",
+                "+ 通勤穿搭",
+                "− 太正式",
+                "− 太普通",
+                "+ 高性价比",
+                "− 高价",
+            ],
+        )
+
+        scenario_2_q1 = app.preset_scenario_response(
+            "这些最近看得有点腻了，换点新鲜的给我看看。",
+        )
+        scenario_2_q2 = app.preset_scenario_response(
+            "最近有没有什么新流行的兴趣爱好值得尝试？",
+            scenario_2_q1["sessionIntent"],
+        )
+        self.assertEqual(
+            [item["label"] for item in scenario_2_q2["sessionIntent"]],
+            ["+ 新鲜感", "+ 新流行", "+ 兴趣爱好"],
+        )
+        self.assertEqual(
+            scenario_2_q2["intent"]["presetBubbleDelta"]["removed"],
+            ["− 重复内容"],
+        )
 
     def test_preset_scenarios_match_core_intent_instead_of_full_sentence(self):
         examples = {
@@ -363,7 +419,7 @@ class RealCatalogTests(unittest.TestCase):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         handler = source[source.index("    def do_POST(self) -> None:"):]
         self.assertLess(
-            handler.index("preset_response = preset_scenario_response(transcript)"),
+            handler.index("preset_response = preset_scenario_response(transcript, existing)"),
             handler.index("intent = parse_intent(transcript)"),
         )
         frontend = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
@@ -375,6 +431,7 @@ class RealCatalogTests(unittest.TestCase):
         source = (ROOT / "scripts" / "build_sites.py").read_text(encoding="utf-8")
         self.assertIn("const presetResponses = __PRESET_RESPONSES__;", source)
         self.assertIn("const presetMatchers = __PRESET_MATCHERS__;", source)
+        self.assertIn("function applyPresetBubbleOps(existing, ops)", source)
         self.assertIn("matchPresetResponse(payload.transcript)", source)
         self.assertIn('os.environ["INTENT_ENGINE"] = "rules"', source)
 
