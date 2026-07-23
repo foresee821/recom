@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import json
 import os
+import random
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -1539,12 +1540,17 @@ def normalize_api_intent(
         return result
 
     include_slots = selected("include_ids", "eq")
-    if not include_slots:
-        preferred = ("居家日用", "生活电器", "零食/坚果/特产")
-        fallback = [item for name in preferred for item in candidates if item["name"] == name]
+    selection_fallback = not include_slots
+    if selection_fallback:
+        fallback_pool = [item for item in candidates if item["level"] == "xcat1"]
+        fallback_count = min(len(fallback_pool), random.SystemRandom().randint(2, 4))
+        fallback = random.SystemRandom().sample(fallback_pool, fallback_count)
         include_slots = [
-            slot(item["level"], "eq", item["name"], "soft", item["name"])
-            for item in fallback[:3]
+            {
+                **slot(item["level"], "eq", item["name"], "soft", item["name"]),
+                "hidden": True,
+            }
+            for item in fallback
         ]
     slots = include_slots + selected("exclude_ids", "neq")
 
@@ -1565,9 +1571,10 @@ def normalize_api_intent(
         "scope": "session",
         "transcript": transcript,
         "selectedCategories": names,
+        "selectionFallback": selection_fallback,
         **mode_payload(
             "product",
-            confidence=0.9,
+            confidence=0.35 if selection_fallback else 0.9,
             evidence=[transcript[:40]],
             route_name="category_selection",
             route_label="相关商品",
@@ -1840,19 +1847,10 @@ def condition_key(condition: dict[str, Any]) -> tuple[str, Any]:
 
 
 def merge_conditions(existing: list[dict[str, Any]], intent: dict[str, Any]) -> list[dict[str, Any]]:
-    merged = [dict(item) for item in existing]
+    # Random fallback slots only drive the current feed. They are not user
+    # preferences, so replace them on every turn instead of accumulating them.
+    merged = [dict(item) for item in existing if not item.get("hidden")]
     incoming_slots = intent.get("slots", [])
-    if any(
-        item["name"] in ("xcat1", "xcat2") and item["operator"] == "eq"
-        for item in incoming_slots
-    ):
-        merged = [
-            item for item in merged
-            if not (
-                item["name"] in ("category", "xcat1", "xcat2")
-                and item["operator"] == "eq"
-            )
-        ]
     for incoming in incoming_slots:
         opposite = "neq" if incoming["operator"] == "eq" else "eq" if incoming["operator"] == "neq" else None
         merged = [
@@ -2243,6 +2241,8 @@ def feedback_for(intent: dict[str, Any]) -> str:
         return "先为你推荐一些热门好物，你也可以继续补充偏好"
     selected_categories = intent.get("selectedCategories", [])
     if selected_categories:
+        if intent.get("selectionFallback"):
+            return "先为你推荐这些"
         return f"已按这些类目为你推荐：{'、'.join(selected_categories)}"
     labels = [item["label"] for item in intent.get("slots", [])]
     if "减少跑鞋" in labels and "增加家居" in labels:

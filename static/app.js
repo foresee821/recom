@@ -188,6 +188,7 @@ function escapeHtml(value) {
 
 function productReasons(item) {
   const matches = state.sessionIntent.filter((condition) => {
+    if (condition.hidden) return false;
     if (condition.operator === "neq") return false;
     if (condition.name === "price") return item.price <= Number(condition.value);
     if (condition.name === "category") {
@@ -339,7 +340,7 @@ function applyHomeCatalogIntentFallback(result, transcript) {
   };
   result.intent = { type: "pull", mode: "product", modeLabel: "商品意图", slots: [condition] };
   result.sessionIntent = [
-    ...state.sessionIntent.filter((item) => !["category", "xcat2"].includes(item.name)),
+    ...state.sessionIntent.filter((item) => !(item.name === condition.name && item.value === condition.value)),
     condition,
   ];
   result.feedback = `已为你找到${category}商品`;
@@ -476,7 +477,7 @@ function applyCategoryCatalogFallback(result, catalogResult) {
   };
   result.intent = { type: "pull", mode: "product", modeLabel: "商品意图", slots: [condition] };
   result.sessionIntent = [
-    ...state.sessionIntent.filter((item) => !["category", "xcat1", "xcat2"].includes(item.name)),
+    ...state.sessionIntent.filter((item) => !(item.name === condition.name && item.value === condition.value)),
     condition,
   ];
   result.feedback = `已为你找到${names.join("、")}商品`;
@@ -603,6 +604,7 @@ function scrollProductsToTop() {
 function renderVoiceKeywords() {
   const keywords = state.sessionIntent
     .map((condition, index) => ({ condition, index }))
+    .filter((item) => !item.condition.hidden)
     .filter(
       (item, position, all) =>
         all.findIndex((candidate) => candidate.condition.label === item.condition.label) === position,
@@ -619,7 +621,7 @@ function renderVoiceKeywords() {
       `,
     )
     .join("");
-  els.clearAllIntents.hidden = state.sessionIntent.length === 0;
+  els.clearAllIntents.hidden = keywords.length === 0;
 
   els.voiceKeywordOrbit.querySelectorAll("[data-remove-keyword]").forEach((button) => {
     button.addEventListener("click", async (event) => {
@@ -648,11 +650,13 @@ function renderVoiceKeywords() {
       }
       renderVoiceKeywords();
       scrollProductsToTop();
-      els.voiceTitle.textContent = state.sessionIntent.length
+      const remainingLabels = state.sessionIntent
+        .filter((condition) => !condition.hidden)
+        .map((condition) => condition.label);
+      els.voiceTitle.textContent = remainingLabels.length
         ? "关键词已更新，推荐已刷新"
         : "已清空关键词，恢复默认推荐";
       els.voiceHint.textContent = "可以说具体商品、生活场景，或探索灵感";
-      const remainingLabels = state.sessionIntent.map((condition) => condition.label);
       els.transcript.textContent = remainingLabels.length
         ? `当前关键词：${remainingLabels.join(" · ")}`
         : "当前没有关键词";
@@ -725,7 +729,7 @@ function openVoice(autoListen = false) {
   els.transcript.textContent = "等待你说话…";
   els.fallbackInput.value = "";
   state.transcript = "";
-  els.voiceTitle.textContent = state.sessionIntent.length > 0
+  els.voiceTitle.textContent = state.sessionIntent.some((condition) => !condition.hidden)
     ? "继续说，推荐会再次调整"
     : "说出你此刻想看的";
   els.voiceHint.textContent = "可以说具体商品、生活场景，或探索灵感";
@@ -940,10 +944,14 @@ async function applyTranscript(transcript) {
     renderProducts();
     renderVoiceKeywords();
     scrollProductsToTop();
-    const keywordLabels = result.sessionIntent.map((condition) => condition.label);
-    els.voiceTitle.textContent = "已理解，推荐已刷新";
+    const keywordLabels = result.sessionIntent
+      .filter((condition) => !condition.hidden)
+      .map((condition) => condition.label);
+    els.voiceTitle.textContent = result.intent.selectionFallback ? "先为你推荐这些" : "已理解，推荐已刷新";
     els.voiceHint.textContent = "可以说具体商品、生活场景，或探索灵感";
-    els.transcript.textContent = keywordLabels.length
+    els.transcript.textContent = result.intent.selectionFallback
+      ? `“${transcript}”`
+      : keywordLabels.length
       ? `已提取关键词：${keywordLabels.join(" · ")}`
       : `“${transcript}”`;
   } catch (error) {

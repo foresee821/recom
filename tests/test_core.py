@@ -74,14 +74,65 @@ class CategorySelectorTests(unittest.TestCase):
         self.assertIn(("price", "lte", 500), slots)
         self.assertFalse(any(value == "不存在的类目" for _, _, value in slots))
 
-    def test_empty_model_selection_still_returns_real_categories_without_rejection_copy(self):
-        intent = app.normalize_api_intent({}, "随便看看")
+    def test_empty_model_selection_randomly_samples_real_categories_without_rejection_copy(self):
+        candidates = app.category_selection_candidates("随便看看")
+        pool = [item for item in candidates if item["level"] == "xcat1"]
+        sampled = [pool[2], pool[-3]]
+        fake_random = SimpleNamespace(
+            randint=lambda start, end: 2,
+            sample=lambda population, count: sampled[:count],
+        )
+
+        with patch("app.random.SystemRandom", return_value=fake_random):
+            intent = app.normalize_api_intent({}, "随便看看", candidates)
 
         self.assertEqual(intent["type"], "pull")
-        self.assertGreaterEqual(len(intent["selectedCategories"]), 1)
+        self.assertTrue(intent["selectionFallback"])
+        self.assertEqual(intent["selectedCategories"], [item["name"] for item in sampled])
+        self.assertTrue(all(item.get("hidden") for item in intent["slots"]))
         feedback = app.feedback_for(intent)
+        self.assertEqual(feedback, "先为你推荐这些")
+        self.assertNotIn("随机", feedback)
+        self.assertFalse(any(item["name"] in feedback for item in sampled))
         self.assertNotIn("没听懂", feedback)
         self.assertNotIn("没识别", feedback)
+
+    def test_conversation_conditions_accumulate_until_explicit_reset(self):
+        existing = [
+            app.slot("xcat1", "eq", "女装/女士精品", "soft", "女装/女士精品"),
+            app.slot("price", "lte", 800, "hard", "≤¥800"),
+        ]
+        incoming = {
+            "slots": [
+                app.slot("xcat1", "eq", "影音电器", "soft", "影音电器"),
+                app.slot("price", "gte", 200, "hard", "≥¥200"),
+            ],
+        }
+
+        merged = app.merge_conditions(existing, incoming)
+        values = {(item["name"], item["operator"], item["value"]) for item in merged}
+        self.assertEqual(len(merged), 4)
+        self.assertIn(("xcat1", "eq", "女装/女士精品"), values)
+        self.assertIn(("xcat1", "eq", "影音电器"), values)
+        self.assertIn(("price", "lte", 800), values)
+        self.assertIn(("price", "gte", 200), values)
+
+    def test_random_fallback_conditions_are_replaced_not_accumulated(self):
+        existing = [
+            app.slot("price", "lte", 800, "hard", "≤¥800"),
+            {**app.slot("xcat1", "eq", "旧随机类目", "soft", "旧随机类目"), "hidden": True},
+        ]
+        incoming = {
+            "slots": [
+                {**app.slot("xcat1", "eq", "新随机类目", "soft", "新随机类目"), "hidden": True},
+            ],
+        }
+
+        merged = app.merge_conditions(existing, incoming)
+        self.assertEqual(
+            [(item["name"], item["value"], item.get("hidden", False)) for item in merged],
+            [("price", 800, False), ("xcat1", "新随机类目", True)],
+        )
 
     def test_multiple_selected_categories_use_or_semantics_and_are_interleaved(self):
         conditions = [
