@@ -383,17 +383,51 @@ async function freshnessCatalogProductIds(transcript, conditions) {
 }
 
 function applyFreshnessCatalogFallback(result, productIds) {
-  if (result.intent.type !== "unknown" || !productIds.length) return;
+  if (!productIds.length) return;
   const condition = {
     name: "goal", operator: "eq", value: "新鲜感", strength: "soft",
     label: "换点新鲜的", sourceMode: "explore", sourceKey: "freshness",
   };
-  result.intent = { type: "explore", mode: "explore", modeLabel: "探索意图", slots: [condition] };
   result.sessionIntent = [
-    ...state.sessionIntent.filter((item) => item.sourceKey !== "freshness"),
+    ...(result.sessionIntent || []).filter((item) => item.sourceKey !== "freshness"),
     condition,
   ];
+  if (result.intent.type !== "unknown") return;
+  result.intent = { type: "explore", mode: "explore", modeLabel: "探索意图", slots: [condition] };
   result.feedback = "已为你换一批新鲜好物";
+}
+
+async function hobbyCatalogProductIds(transcript, conditions) {
+  const normalized = String(transcript || "").replace(/\s/g, "");
+  const hasFreshnessContext = conditions.some((condition) => condition.sourceKey === "freshness");
+  const isHobbyQuery = /(新流行.{0,8}(兴趣|爱好)|(兴趣|爱好).{0,8}(值得尝试|流行|新)|尝试.{0,6}(兴趣|爱好)|有什么新爱好)/.test(normalized);
+  if (!hasFreshnessContext || !isHobbyQuery) return [];
+  if (!state.intentCatalogCache.has("trending-hobbies")) {
+    const response = await fetch("data/intent-products/trending-hobbies.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("兴趣爱好商品加载失败");
+    const payload = await response.json();
+    state.intentCatalogCache.set("trending-hobbies", (payload.products || [])
+      .filter((item) => !String(item.title || "").includes("测试商品请不要拍")));
+  }
+  const products = state.intentCatalogCache.get("trending-hobbies");
+  for (const item of products) state.products.set(item.id, item);
+  return products.map((item) => item.id);
+}
+
+function applyHobbyCatalogFallback(result, productIds) {
+  if (!productIds.length) return;
+  const condition = {
+    name: "goal", operator: "eq", value: "新流行兴趣", strength: "soft",
+    label: "尝试新流行的兴趣爱好", sourceMode: "explore", sourceKey: "trending-hobbies",
+  };
+  result.sessionIntent = [
+    ...(result.sessionIntent || []).filter((item) => item.sourceKey !== "trending-hobbies"),
+    condition,
+  ];
+  if (result.intent.type === "unknown") {
+    result.intent = { type: "explore", mode: "explore", modeLabel: "探索意图", slots: [condition] };
+  }
+  result.feedback = "已为你找到值得尝试的新流行兴趣";
 }
 
 async function loadCategoryCatalogIndex() {
@@ -937,6 +971,8 @@ async function applyTranscript(transcript) {
     applyCategoryCatalogFallback(result, categoryCatalog);
     const freshnessCatalogIds = await freshnessCatalogProductIds(transcript, result.sessionIntent || []);
     applyFreshnessCatalogFallback(result, freshnessCatalogIds);
+    const hobbyCatalogIds = await hobbyCatalogProductIds(transcript, result.sessionIntent || []);
+    applyHobbyCatalogFallback(result, hobbyCatalogIds);
     const intentCatalogIds = await intentCatalogProductIds(transcript, result.sessionIntent || []);
     applyIntentCatalogFallback(result, intentCatalogIds);
     if (!applyHomeCatalogIntentFallback(result, transcript)) {
@@ -946,9 +982,12 @@ async function applyTranscript(transcript) {
     (result.products || []).forEach((item) => state.products.set(item.id, item));
     state.sessionIntent = result.sessionIntent;
     if (state.scene === "recommend") {
-      state.activeIntentProductIds = freshnessCatalogIds.length ? freshnessCatalogIds : intentCatalogIds;
+      state.activeIntentProductIds = hobbyCatalogIds.length
+        ? hobbyCatalogIds
+        : freshnessCatalogIds.length ? freshnessCatalogIds : intentCatalogIds;
       const catalogIds = rankHomeCatalogForIntent(result.sessionIntent);
       state.recommendationIds = usableResultIds(
+        hobbyCatalogIds,
         freshnessCatalogIds,
         intentCatalogIds,
         categoryCatalog.ids,

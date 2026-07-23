@@ -108,6 +108,18 @@ class RealCatalogTests(unittest.TestCase):
         self.assertIn("freshnessCatalogProductIds(transcript", source)
         self.assertIn("看腻了|有点腻|换点新鲜", source)
 
+    def test_trending_hobbies_follow_up_uses_sheet2_catalog(self):
+        payload = json.loads(
+            (ROOT / "static" / "data" / "intent-products" / "trending-hobbies.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(payload["scene"], "trending-hobbies")
+        self.assertEqual(len(payload["products"]), 12)
+        self.assertTrue(all(item["id"].startswith("intent-trending-hobbies-") for item in payload["products"]))
+        source = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("hobbyCatalogProductIds(transcript", source)
+        self.assertIn('condition.sourceKey === "freshness"', source)
+        self.assertIn("新流行.{0,8}(兴趣|爱好)", source)
+
 
 if __name__ == "__main__":
     unittest.main()
