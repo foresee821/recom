@@ -298,6 +298,48 @@ class RealCatalogTests(unittest.TestCase):
         self.assertIn("!condition.hidden && condition.operator === \"eq\"", source)
         self.assertIn("state.lastSelectionFallback ? [] : state.recommendationIds", source)
 
+    def test_seven_preset_prompts_use_their_own_workbook_products(self):
+        expected_counts = [10, 10, 10, 12, 12, 12, 10]
+        self.assertEqual(len(app.SCENARIO_PRESETS), 7)
+        self.assertEqual(
+            [len(item["products"]) for item in app.SCENARIO_PRESETS],
+            expected_counts,
+        )
+        product_ids = [
+            product["id"]
+            for preset in app.SCENARIO_PRESETS
+            for product in preset["products"]
+        ]
+        self.assertEqual(len(product_ids), len(set(product_ids)))
+        self.assertTrue(all(
+            product["image"].startswith("https://img.alicdn.com/")
+            for preset in app.SCENARIO_PRESETS
+            for product in preset["products"]
+        ))
+
+        for preset in app.SCENARIO_PRESETS:
+            response = app.preset_scenario_response(f"  {preset['prompt']}  ")
+            self.assertIsNotNone(response)
+            self.assertEqual(response["intent"]["type"], "preset")
+            self.assertEqual(response["intent"]["presetKey"], preset["key"])
+            self.assertEqual(response["sessionIntent"], [])
+            self.assertEqual(response["resultIds"], [
+                product["id"] for product in preset["products"]
+            ])
+            self.assertEqual(response["products"], preset["products"])
+
+    def test_preset_route_precedes_model_intent_parsing(self):
+        source = (ROOT / "app.py").read_text(encoding="utf-8")
+        handler = source[source.index("    def do_POST(self) -> None:"):]
+        self.assertLess(
+            handler.index("preset_response = preset_scenario_response(transcript)"),
+            handler.index("intent = parse_intent(transcript)"),
+        )
+        frontend = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('const isPresetScenario = result.intent.type === "preset"', frontend)
+        self.assertIn("state.recommendationIds = [...result.resultIds]", frontend)
+        self.assertIn("if (state.activePresetKey) return;", frontend)
+
     def test_secondary_category_returns_real_ranked_products(self):
         for transcript, expected in (("我想看项链", "项链"), ("我想看连衣裙", "连衣裙")):
             with self.subTest(transcript=transcript):

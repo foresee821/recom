@@ -16,6 +16,7 @@ from typing import Any
 ROOT = Path(__file__).parent
 STATIC_DIR = ROOT / "static"
 HOME_CATALOG_PATH = STATIC_DIR / "data" / "home-products.json"
+SCENARIO_CATALOG_PATH = STATIC_DIR / "data" / "scenario-products.json"
 _WHALE_CONFIG_LOCK = threading.Lock()
 _WHALE_CONFIG_SIGNATURE: tuple[str, str] | None = None
 _HOME_CATALOG_GZIP: bytes | None = None
@@ -519,6 +520,23 @@ PRODUCTS: list[dict[str, Any]] = []
 PRODUCT_BY_ID = {item["id"]: item for item in TAXONOMY_PRODUCTS}
 INITIAL_RECOMMENDATIONS: list[str] = []
 INITIAL_SEARCH_RESULTS: list[str] = []
+
+SCENARIO_CATALOG = json.loads(SCENARIO_CATALOG_PATH.read_text(encoding="utf-8"))
+SCENARIO_PRESETS: list[dict[str, Any]] = SCENARIO_CATALOG["presets"]
+
+
+def normalize_preset_prompt(value: str) -> str:
+    return re.sub(r"[\s，。！？、,.!?“”\"'：:；;·\-—_]+", "", value).lower()
+
+
+SCENARIO_PRESET_BY_PROMPT = {
+    normalize_preset_prompt(item["prompt"]): item
+    for item in SCENARIO_PRESETS
+}
+
+
+def preset_scenario_for(transcript: str) -> dict[str, Any] | None:
+    return SCENARIO_PRESET_BY_PROMPT.get(normalize_preset_prompt(transcript))
 
 
 def slot(name: str, operator: str, value: Any, strength: str, label: str) -> dict[str, Any]:
@@ -2421,6 +2439,49 @@ def products_for_ranked_results(ranked: dict[str, list[str]]) -> list[dict[str, 
     ]
 
 
+def preset_scenario_response(transcript: str) -> dict[str, Any] | None:
+    preset = preset_scenario_for(transcript)
+    if preset is None:
+        return None
+    products = preset["products"]
+    intent = {
+        "type": "preset",
+        "polarity": "neutral",
+        "slots": [],
+        "scope": "turn",
+        "transcript": transcript,
+        "presetKey": preset["key"],
+        "scenario": preset["scenario"],
+        "selectedCategories": [],
+        "excludedCategories": [],
+        "selectionFallback": False,
+        **mode_payload(
+            "product",
+            confidence=1.0,
+            evidence=[preset["prompt"]],
+            route_name="preset_scenario",
+            route_label="预制情景",
+            route_summary=f"直接展示 {preset['scenario']} 的固定商品集",
+        ),
+    }
+    return {
+        "intent": intent,
+        "engine": {
+            "mode": intent["mode"],
+            "modeLabel": intent["modeLabel"],
+            "confidence": intent["confidence"],
+            "evidence": intent["evidence"],
+            "route": intent["route"],
+        },
+        "sessionIntent": [],
+        "resultIds": [item["id"] for item in products],
+        "nearMatchIds": [],
+        "products": products,
+        "fallbackApplied": False,
+        "feedback": preset["feedback"],
+    }
+
+
 def bootstrap_payload() -> dict[str, Any]:
     return {
         "products": PRODUCTS,
@@ -2437,6 +2498,13 @@ def bootstrap_payload() -> dict[str, Any]:
         ],
         "examples": {
             "recommend": [
+                "今天先别推护肤了，想看看穿搭。",
+                "想看看通勤能穿的，别太正式，也别太普通。",
+                "这些感觉不错，就是感觉有些贵，多来一点性价比高的。",
+                "这些最近看得有点腻了，换点新鲜的给我看看。",
+                "最近有没有什么新流行的兴趣爱好值得尝试？",
+                "我刚搬了新家，想慢慢把家布置起来",
+                "下周末要去见喜欢的人了",
                 "给我推荐点健身好物",
                 "有没有让我眼前一亮的好物",
                 "我的出租屋还能更舒服吗？",
@@ -2524,6 +2592,10 @@ class DemoHandler(SimpleHTTPRequestHandler):
                 existing = payload.get("sessionIntent", [])
                 if not isinstance(existing, list):
                     raise ValueError("sessionIntent 必须是数组")
+                preset_response = preset_scenario_response(transcript)
+                if preset_response is not None:
+                    self.send_json(preset_response)
+                    return
                 intent = parse_intent(transcript)
                 conditions = merge_conditions(existing, intent)
                 ranked = rank_results_for_display(scene, conditions, intent)

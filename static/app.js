@@ -61,6 +61,7 @@ const state = {
   categoryCatalogIndex: null,
   categoryCatalogShardCache: new Map(),
   activeIntentProductIds: [],
+  activePresetKey: null,
   lastSelectionFallback: false,
   searchWatermarkIndex: 0,
   searchWatermarkTimer: null,
@@ -502,6 +503,7 @@ function applyIntentCatalogFallback(result, intentCatalogIds) {
 }
 
 function preloadNextHomepageRound() {
+  if (state.activePresetKey) return;
   const round = state.homeCatalogRound;
   if (state.homeCatalogComplete || round === state.homeCatalogPreloadRound) return;
   state.homeCatalogPreloadRound = round;
@@ -515,6 +517,7 @@ function preloadNextHomepageRound() {
 }
 
 function appendNextHomepageRound() {
+  if (state.activePresetKey) return;
   if (state.homeCatalogLoading || state.homeCatalogComplete || !state.homeCatalogProducts.length) return;
   if (state.scene !== "recommend" || state.sessionIntent.length > 0) return;
   state.homeCatalogLoading = true;
@@ -678,6 +681,7 @@ async function clearAllIntents() {
   state.nearIds = [];
   state.previous = null;
   state.activeIntentProductIds = [];
+  state.activePresetKey = null;
   state.lastSelectionFallback = false;
   renderIntents();
   renderProducts();
@@ -979,10 +983,15 @@ async function applyTranscript(transcript) {
         sessionIntent: state.sessionIntent,
       }),
     });
-    const categoryCatalog = await categoryCatalogProducts(transcript, result.sessionIntent || []);
-    applyCategoryCatalogFallback(result, categoryCatalog);
-    const intentCatalogIds = await intentCatalogProductIds(transcript, result.sessionIntent || []);
-    applyIntentCatalogFallback(result, intentCatalogIds);
+    const isPresetScenario = result.intent.type === "preset";
+    const categoryCatalog = isPresetScenario
+      ? { ids: [], matches: [] }
+      : await categoryCatalogProducts(transcript, result.sessionIntent || []);
+    if (!isPresetScenario) applyCategoryCatalogFallback(result, categoryCatalog);
+    const intentCatalogIds = isPresetScenario
+      ? []
+      : await intentCatalogProductIds(transcript, result.sessionIntent || []);
+    if (!isPresetScenario) applyIntentCatalogFallback(result, intentCatalogIds);
     state.lastSelectionFallback = Boolean(result.intent.selectionFallback);
     if (!applyHomeCatalogIntentFallback(result, transcript)) {
       els.transcript.textContent = result.feedback;
@@ -990,19 +999,25 @@ async function applyTranscript(transcript) {
     }
     (result.products || []).forEach((item) => state.products.set(item.id, item));
     state.sessionIntent = result.sessionIntent;
+    state.activePresetKey = isPresetScenario ? result.intent.presetKey : null;
     if (state.scene === "recommend") {
       state.activeIntentProductIds = intentCatalogIds;
-      const catalogIds = rankHomeCatalogForIntent(result.sessionIntent);
-      state.recommendationIds = usableResultIds(
-        intentCatalogIds,
-        categoryCatalog.ids,
-        catalogIds,
-        result.resultIds,
-        result.nearMatchIds,
-        state.previous?.recommendationIds,
-        state.bootstrap.initialRecommendations,
-      );
-      els.subtitle.textContent = "已融合你刚刚表达的即时意图";
+      if (isPresetScenario) {
+        state.recommendationIds = [...result.resultIds];
+        els.subtitle.textContent = "已切换为预制情景商品";
+      } else {
+        const catalogIds = rankHomeCatalogForIntent(result.sessionIntent);
+        state.recommendationIds = usableResultIds(
+          intentCatalogIds,
+          categoryCatalog.ids,
+          catalogIds,
+          result.resultIds,
+          result.nearMatchIds,
+          state.previous?.recommendationIds,
+          state.bootstrap.initialRecommendations,
+        );
+        els.subtitle.textContent = "已融合你刚刚表达的即时意图";
+      }
     } else {
       state.searchIds = result.resultIds;
       state.nearIds = result.resultIds.length < 3 ? result.nearMatchIds : [];
@@ -1015,7 +1030,11 @@ async function applyTranscript(transcript) {
     const keywordLabels = result.sessionIntent
       .filter((condition) => !condition.hidden)
       .map((condition) => condition.label);
-    els.voiceTitle.textContent = result.intent.selectionFallback ? "先为你推荐这些" : "已理解，推荐已刷新";
+    els.voiceTitle.textContent = isPresetScenario
+      ? "已按情景更新推荐"
+      : result.intent.selectionFallback
+      ? "先为你推荐这些"
+      : "已理解，推荐已刷新";
     els.voiceHint.textContent = "可以说具体商品、生活场景，或探索灵感";
     els.transcript.textContent = result.intent.selectionFallback
       ? `“${transcript}”`
