@@ -54,8 +54,10 @@ const state = {
   homeCatalogMaxRounds: 0,
   homeCatalogLoading: false,
   homeCatalogComplete: false,
+  homeCatalogPendingProducts: [],
+  homeCatalogBatchSize: 12,
   homeRecommendationIds: [],
-  homeCatalogPreloadRound: -1,
+  homeCatalogPreloadKey: "",
   homeCatalogPreloadImages: [],
   intentCatalogCache: new Map(),
   categoryCatalogIndex: null,
@@ -226,7 +228,7 @@ function productCard(item, index, isNear = false) {
     ? `<div class="product-image product-photo common-product" style="--common-image:url('${commonSprite.image}');--common-position:${commonSprite.position}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
     : spritePanel
     ? `<div class="product-image product-photo ${spritePanel}" role="img" aria-label="${escapeHtml(item.title)}"></div>`
-    : `<img class="product-image" src="${item.image.replace(/^\/assets\//, "assets/")}" alt="${escapeHtml(item.title)}" />`;
+    : `<img class="product-image" src="${item.image.replace(/^\/assets\//, "assets/")}" alt="${escapeHtml(item.title)}" loading="${index < 4 && !isNear ? "eager" : "lazy"}" fetchpriority="${index < 2 && !isNear ? "high" : "auto"}" decoding="async" />`;
   return `
     <article class="product-card is-new card-shape-${index % 4}" style="--delay:${Math.min(index * 55, 330)}ms">
       ${image}
@@ -594,10 +596,15 @@ function applyIntentCatalogFallback(result, intentCatalogIds) {
 
 function preloadNextHomepageRound() {
   if (state.activePresetKey) return;
-  const round = state.homeCatalogRound;
-  if (state.homeCatalogComplete || round === state.homeCatalogPreloadRound) return;
-  state.homeCatalogPreloadRound = round;
-  state.homeCatalogPreloadImages = homepageProductsForRound(state.homeCatalogProducts, round)
+  if (state.homeCatalogComplete) return;
+  const preloadKey = `${state.homeCatalogRound}:${state.homeCatalogPendingProducts.length}`;
+  if (preloadKey === state.homeCatalogPreloadKey) return;
+  state.homeCatalogPreloadKey = preloadKey;
+  const candidates = state.homeCatalogPendingProducts.length
+    ? state.homeCatalogPendingProducts
+    : homepageProductsForRound(state.homeCatalogProducts, state.homeCatalogRound);
+  state.homeCatalogPreloadImages = candidates
+    .slice(0, state.homeCatalogBatchSize)
     .map((item) => {
       const image = new Image();
       image.decoding = "async";
@@ -611,7 +618,19 @@ function appendNextHomepageRound() {
   if (state.homeCatalogLoading || state.homeCatalogComplete || !state.homeCatalogProducts.length) return;
   if (state.scene !== "recommend" || state.sessionIntent.length > 0) return;
   state.homeCatalogLoading = true;
-  const selected = homepageProductsForRound(state.homeCatalogProducts, state.homeCatalogRound);
+  if (!state.homeCatalogPendingProducts.length) {
+    if (state.homeCatalogRound >= state.homeCatalogMaxRounds) {
+      state.homeCatalogComplete = true;
+      state.homeCatalogLoading = false;
+      return;
+    }
+    state.homeCatalogPendingProducts = homepageProductsForRound(
+      state.homeCatalogProducts,
+      state.homeCatalogRound,
+    );
+    state.homeCatalogRound += 1;
+  }
+  const selected = state.homeCatalogPendingProducts.splice(0, state.homeCatalogBatchSize);
   if (!selected.length) {
     state.homeCatalogComplete = true;
     state.homeCatalogLoading = false;
@@ -621,8 +640,10 @@ function appendNextHomepageRound() {
   for (const item of selected) state.products.set(item.id, item);
   state.homeRecommendationIds.push(...selected.map((item) => item.id));
   state.recommendationIds = [...state.homeRecommendationIds];
-  state.homeCatalogRound += 1;
-  state.homeCatalogComplete = state.homeCatalogRound >= state.homeCatalogMaxRounds;
+  state.homeCatalogComplete = (
+    state.homeCatalogRound >= state.homeCatalogMaxRounds
+    && state.homeCatalogPendingProducts.length === 0
+  );
   if (startIndex === 0) {
     renderGrid(els.recommendGrid, state.recommendationIds);
   } else {
@@ -635,15 +656,15 @@ function appendNextHomepageRound() {
 }
 
 function fillHomepageScrollBuffer() {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const remaining = els.scroller.scrollHeight - els.scroller.scrollTop - els.scroller.clientHeight;
-    if (remaining >= 9000 || state.homeCatalogComplete) break;
-    appendNextHomepageRound();
-  }
+  const remaining = els.scroller.scrollHeight - els.scroller.scrollTop - els.scroller.clientHeight;
+  if (remaining < 2400 && !state.homeCatalogComplete) appendNextHomepageRound();
 }
 
 async function loadHomepageCatalog() {
-  const response = await fetch("data/home-products.json", { cache: "no-store" });
+  const response = await fetch(
+    "data/home-products.json?v=20260723-home-v2",
+    { cache: "force-cache" },
+  );
   if (!response.ok) throw new Error("首页商品数据加载失败");
   const payload = await response.json();
   state.homeCatalogProducts = Array.isArray(payload.products) ? payload.products : [];
@@ -654,7 +675,8 @@ async function loadHomepageCatalog() {
   }
   state.homeCatalogMaxRounds = Math.max(0, ...categoryCounts.values());
   state.homeCatalogRound = 0;
-  state.homeCatalogPreloadRound = -1;
+  state.homeCatalogPendingProducts = [];
+  state.homeCatalogPreloadKey = "";
   state.homeCatalogPreloadImages = [];
   state.homeCatalogComplete = false;
   state.homeRecommendationIds = [];
@@ -1279,19 +1301,16 @@ async function init() {
     state.recommendationIds = [...state.bootstrap.initialRecommendations];
     state.searchIds = [...state.bootstrap.initialSearchResults];
     renderProducts();
+    if (!state.recommendationIds.length) showHomepageLoading();
     renderIntents();
     renderExamples();
     bindEvents();
     restartSearchWatermarks();
-    const loadCatalogAfterFirstPaint = () => {
-      setTimeout(() => {
-        loadHomepageCatalog().catch((error) => {
-          console.warn("长尾首页商品加载失败，继续使用基础商品：", error);
-        });
-      }, 500);
-    };
-    if (document.readyState === "complete") loadCatalogAfterFirstPaint();
-    else window.addEventListener("load", loadCatalogAfterFirstPaint, { once: true });
+    requestAnimationFrame(() => {
+      loadHomepageCatalog().catch((error) => {
+        console.warn("长尾首页商品加载失败，继续使用基础商品：", error);
+      });
+    });
   } catch (error) {
     showToast(`Demo 加载失败：${error.message}`);
   }

@@ -324,6 +324,11 @@ class RealCatalogTests(unittest.TestCase):
         self.assertIn("const hasBackendProducts = Boolean(", source)
         self.assertIn("await Promise.all([", source)
         self.assertNotIn("setTimeout(() => applyTranscript", source)
+        self.assertIn("homeCatalogBatchSize: 12", source)
+        self.assertIn('loading="${index < 4 && !isNear ? "eager" : "lazy"}"', source)
+        self.assertIn('{ cache: "force-cache" }', source)
+        self.assertIn("if (!state.recommendationIds.length) showHomepageLoading()", source)
+        self.assertNotIn("loadCatalogAfterFirstPaint", source)
 
     def test_seven_preset_prompts_use_their_own_workbook_products(self):
         expected_counts = [10, 10, 10, 12, 13, 12, 10]
