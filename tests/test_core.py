@@ -295,9 +295,12 @@ class RealCatalogTests(unittest.TestCase):
         self.assertIn("setInterval(() => renderNextSearchWatermark(), 3000)", source)
         self.assertIn("!condition.hidden && condition.operator === \"eq\"", source)
         self.assertIn("state.lastSelectionFallback ? [] : state.recommendationIds", source)
+        self.assertIn("const hasBackendProducts = Boolean(", source)
+        self.assertIn("await Promise.all([", source)
+        self.assertNotIn("setTimeout(() => applyTranscript", source)
 
     def test_seven_preset_prompts_use_their_own_workbook_products(self):
-        expected_counts = [10, 10, 10, 12, 12, 12, 10]
+        expected_counts = [10, 10, 10, 12, 13, 12, 10]
         self.assertEqual(len(app.SCENARIO_PRESETS), 7)
         self.assertEqual(
             [len(item["products"]) for item in app.SCENARIO_PRESETS],

@@ -888,7 +888,7 @@ function renderExamples() {
     button.addEventListener("click", () => {
       els.transcript.textContent = button.dataset.example;
       state.transcript = button.dataset.example;
-      setTimeout(() => applyTranscript(button.dataset.example), 500);
+      applyTranscript(button.dataset.example);
     });
   });
 }
@@ -988,7 +988,7 @@ function createRecognition() {
     setListeningUI(false);
     if (shouldSubmit) {
       const value = state.transcript;
-      setTimeout(() => applyTranscript(value), 500);
+      applyTranscript(value);
     }
   };
   return recognition;
@@ -1063,7 +1063,7 @@ function stopListening(shouldApply = true) {
   }
   if (shouldApply && state.transcript && !state.recognitionFailed) {
     const value = state.transcript;
-    setTimeout(() => applyTranscript(value), 500);
+    applyTranscript(value);
   }
   state.listening = false;
   setListeningUI(false);
@@ -1071,7 +1071,7 @@ function stopListening(shouldApply = true) {
 
 async function applyTranscript(transcript) {
   state.previous = snapshot();
-  els.transcript.textContent = `“${transcript}”`;
+  els.transcript.textContent = `“${transcript}” · 正在理解并更新推荐…`;
   try {
     const result = await api("/api/intent/apply", {
       method: "POST",
@@ -1085,21 +1085,22 @@ async function applyTranscript(transcript) {
     const isPresetScenario = result.intent.type === "preset";
     const isShowcaseScenario = result.intent.type === "showcase";
     const isFixedScenario = isPresetScenario || isShowcaseScenario;
-    const categoryCatalog = isFixedScenario
+    const hasBackendProducts = Boolean(
+      (result.resultIds || []).length && (result.products || []).length,
+    );
+    const categoryCatalog = isFixedScenario || hasBackendProducts
       ? { ids: [], matches: [] }
       : await categoryCatalogProducts(transcript, result.sessionIntent || []);
     if (!isFixedScenario) applyCategoryCatalogFallback(result, categoryCatalog);
-    const freshnessCatalogIds = isFixedScenario
-      ? []
-      : await freshnessCatalogProductIds(transcript, result.sessionIntent || []);
+    const [freshnessCatalogIds, hobbyCatalogIds, intentCatalogIds] = isFixedScenario
+      ? [[], [], []]
+      : await Promise.all([
+        freshnessCatalogProductIds(transcript, result.sessionIntent || []),
+        hobbyCatalogProductIds(transcript, result.sessionIntent || []),
+        intentCatalogProductIds(transcript, result.sessionIntent || []),
+      ]);
     if (!isFixedScenario) applyFreshnessCatalogFallback(result, freshnessCatalogIds);
-    const hobbyCatalogIds = isFixedScenario
-      ? []
-      : await hobbyCatalogProductIds(transcript, result.sessionIntent || []);
     if (!isFixedScenario) applyHobbyCatalogFallback(result, hobbyCatalogIds);
-    const intentCatalogIds = isFixedScenario
-      ? []
-      : await intentCatalogProductIds(transcript, result.sessionIntent || []);
     if (!isFixedScenario) applyIntentCatalogFallback(result, intentCatalogIds);
     state.lastSelectionFallback = Boolean(result.intent.selectionFallback);
     if (!applyHomeCatalogIntentFallback(result, transcript)) {
@@ -1262,7 +1263,7 @@ function bindEvents() {
     if (!value) return;
     state.transcript = value;
     els.transcript.textContent = `“${value}”`;
-    setTimeout(() => applyTranscript(value), 500);
+    applyTranscript(value);
   });
   els.scroller.addEventListener("scroll", () => {
     if (els.scroller.scrollTop > 120) preloadNextHomepageRound();
